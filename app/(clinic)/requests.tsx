@@ -64,7 +64,13 @@ export default function ClinicRequestsScreen() {
 
   const filteredList = useMemo(() => {
     if (statusFilter === 'ALL') return currentList;
-    return currentList.filter((r) => r.status?.toUpperCase() === statusFilter);
+    return currentList.filter((r) => {
+      const s = r.status?.toUpperCase();
+      if (statusFilter === 'ACCEPTED') {
+        return s === 'ACCEPTED' || s === 'APPROVED';
+      }
+      return s === statusFilter;
+    });
   }, [currentList, statusFilter]);
 
   const pendingReceivedCount = receivedRequests.filter(
@@ -278,28 +284,28 @@ export default function ClinicRequestsScreen() {
                       style={[
                         styles.statusBadge,
                         {
-                          backgroundColor: isPending
-                            ? '#FEF3C7'
-                            : isAccepted
+                          backgroundColor: isAccepted
                             ? '#ECFDF5'
+                            : isPending
+                            ? '#FEF3C7'
                             : '#FEF2F2',
                         },
                       ]}
                     >
                       <Icon
-                        name={isPending ? 'clock' : isAccepted ? 'check-circle' : 'x-circle'}
+                        name={isAccepted ? 'check-circle' : isPending ? 'clock' : 'x-circle'}
                         size={11}
-                        color={isPending ? '#B45309' : isAccepted ? '#047857' : '#BE123C'}
+                        color={isAccepted ? '#047857' : isPending ? '#B45309' : '#DC2626'}
                       />
                       <Text
                         style={[
                           styles.statusBadgeText,
                           {
-                            color: isPending
-                              ? '#B45309'
-                              : isAccepted
+                            color: isAccepted
                               ? '#047857'
-                              : '#BE123C',
+                              : isPending
+                              ? '#B45309'
+                              : '#DC2626',
                           },
                         ]}
                       >

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,14 +12,17 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
 import { Icon } from '../../components/Icon';
 import { LanguageSwitcher } from '../../components/LanguageSwitcher';
-import { api, setAccessToken } from '../../lib/api';
+import { OtpInput } from '../../components/OtpInput';
+import { KeyboardAwareScrollView } from '../../components/KeyboardAwareScrollView';
+import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth-context';
 import { useLanguage } from '../../lib/language-context';
+import { getDashboardRouteForRole } from '../../lib/auth-utils';
 import type { Role, AuthUser } from '../../types';
 
 const CLINIC_PHONE = '+919777777777';
@@ -27,75 +30,132 @@ const CLINIC_WHATSAPP = '919777777777';
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const params = useLocalSearchParams<{ phone?: string }>();
+  const { user, isAuthenticated, loading, login } = useAuth();
   const { t } = useLanguage();
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  // Auto-redirect if already authenticated
+  useEffect(() => {
+    if (!loading && isAuthenticated && user) {
+      router.replace(getDashboardRouteForRole(user.role) as any);
+    }
+  }, [loading, isAuthenticated, user, router]);
 
+  const prefilledPhone = (params.phone || '').trim().replace(/\D/g, '');
+
+  const [phoneInput, setPhoneInput] = useState(prefilledPhone);
+  const [name, setName] = useState('');
+  const [otp, setOtp] = useState('');
+
+  // If redirected from login where send-otp was already triggered
+  const [isOtpSent, setIsOtpSent] = useState(Boolean(prefilledPhone));
+  const [timer, setTimer] = useState(prefilledPhone ? 300 : 0);
+
+  const [isLoadingOtp, setIsLoadingOtp] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
 
+  // 5-minute countdown timer for OTP cooldown
+  useEffect(() => {
+    let interval: any;
+    if (isOtpSent && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isOtpSent, timer]);
+
+  // Request OTP if phone was not prefilled
+  const handleRequestOtp = async () => {
+    setServerError('');
+    const clean = phoneInput.trim().replace(/\D/g, '');
+    if (!clean || clean.length < 10) {
+      setServerError(
+        t('auth.validPhoneRequired', 'Please enter a valid 10-digit mobile number')
+      );
+      return;
+    }
+
+    setIsLoadingOtp(true);
+    try {
+      const formatted = clean.startsWith('91') && clean.length > 10
+        ? `+${clean}`
+        : `+91${clean.slice(-10)}`;
+
+      await api.post('/auth/send-otp', { phone: formatted });
+      setIsOtpSent(true);
+      setTimer(300);
+      setOtp('');
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to send OTP. Please try again.';
+      setServerError(msg);
+    } finally {
+      setIsLoadingOtp(false);
+    }
+  };
+
+  // Verify OTP and create patient account
   const handleRegister = async () => {
     setServerError('');
 
-    if (!name.trim()) {
-      setServerError('Please enter your full name');
+    if (!name.trim() || name.trim().length < 2) {
+      setServerError('Please enter your full name (at least 2 characters)');
       return;
     }
 
-    const cleanPhone = phone.trim().replace(/\D/g, '');
-    if (!cleanPhone || cleanPhone.length < 10) {
-      setServerError('Please enter a valid 10-digit mobile number');
+    const clean = phoneInput.trim().replace(/\D/g, '');
+    if (!clean || clean.length < 10) {
+      setServerError(
+        t('auth.validPhoneRequired', 'Please enter a valid 10-digit mobile number')
+      );
       return;
     }
 
-    if (!password) {
-      setServerError('Please create a password for your account');
-      return;
-    }
-
-    if (password.length < 6) {
-      setServerError('Password must be at least 6 characters');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setServerError('Passwords do not match');
+    if (!otp.trim() || otp.trim().length < 6) {
+      setServerError(
+        t('auth.enterCompleteOtp', 'Please enter complete 6-digit OTP')
+      );
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const formattedPhone = cleanPhone.startsWith('91')
-        ? `+${cleanPhone}`
-        : `+91${cleanPhone.slice(-10)}`;
+      const formatted = clean.startsWith('91') && clean.length > 10
+        ? `+${clean}`
+        : `+91${clean.slice(-10)}`;
 
-      // Call registration endpoint
-      const response = await api.post('/auth/register', {
+      const response = await api.post('/auth/verify-otp', {
+        phone: formatted,
+        otp: otp.trim(),
         name: name.trim(),
-        phone: formattedPhone,
-        ...(email.trim() ? { email: email.trim() } : {}),
-        password,
-        role: 'PATIENT',
       });
 
       const responseData = response.data?.data;
-      if (responseData?.accessToken && responseData?.user) {
-        await login(responseData.accessToken, responseData.user as AuthUser);
-        router.replace('/(patient)' as any);
-      } else {
-        router.replace('/(auth)' as any);
+      if (!responseData?.accessToken || !responseData?.user) {
+        throw new Error('Invalid verification response');
       }
+
+      await login(
+        {
+          accessToken: responseData.accessToken,
+          refreshToken: responseData.refreshToken,
+        },
+        responseData.user as AuthUser
+      );
+
+      // Successfully registered patient -> Go directly to patient overview
+      router.replace('/(patient)' as any);
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
         err?.message ||
-        'Failed to register account. Please check your details.';
+        'Invalid or expired OTP. Could not complete registration.';
       setServerError(msg);
     } finally {
       setIsSubmitting(false);
@@ -104,18 +164,13 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardAwareScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        extraHeight={140}
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Top Bar: Back to Home + Language Switcher + Join Free Badge */}
-          <View style={styles.topNavRow}>
+        {/* Top Bar: Back to Home + Language Switcher + Join Free Badge */}
+        <View style={styles.topNavRow}>
             <TouchableOpacity
               style={styles.backHomeBtn}
               onPress={() => router.replace('/(main)')}
@@ -129,7 +184,7 @@ export default function RegisterScreen() {
               <LanguageSwitcher compact />
               <View style={styles.liveBadge}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveText}>Join Free</Text>
+                <Text style={styles.liveText}>{t('auth.joinFree', 'Join Free')}</Text>
               </View>
             </View>
           </View>
@@ -146,21 +201,27 @@ export default function RegisterScreen() {
               </View>
               <View>
                 <Text style={styles.brandHeroTitle}>Doctor Contact</Text>
-                <Text style={styles.brandHeroSub}>Smart Healthcare & Queue Ecosystem</Text>
+                <Text style={styles.brandHeroSub}>
+                  {t('footer.tagline', 'Smart Healthcare & Queue Ecosystem')}
+                </Text>
               </View>
             </View>
 
             <View style={styles.heroTextGroup}>
               <View style={styles.heroBadge}>
                 <Icon name="sparkles" size={12} color="#FDE047" />
-                <Text style={styles.heroBadgeText}>Patient Account Registration</Text>
+                <Text style={styles.heroBadgeText}>
+                  {t('auth.patientRegistration', 'Patient Account Registration')}
+                </Text>
               </View>
               <Text style={styles.heroHeading}>
-                Begin your seamless healthcare journey.
+                {t('auth.heroHeadingAuth', 'Begin your seamless healthcare journey.')}
               </Text>
               <Text style={styles.heroDescription}>
-                Create your account in seconds to reserve doctor consultations, track live token
-                queues, and manage medical visits.
+                {t(
+                  'auth.heroDescAuth',
+                  'Create your account in seconds to reserve doctor consultations, track live token queues, and manage medical visits.'
+                )}
               </Text>
             </View>
 
@@ -171,8 +232,12 @@ export default function RegisterScreen() {
                   <Icon name="calendar" size={14} color="#34D399" />
                 </View>
                 <View style={styles.pillarTextGroup}>
-                  <Text style={styles.pillarTitle}>Instant Slot Booking</Text>
-                  <Text style={styles.pillarDesc}>Pick dates & slots online in seconds</Text>
+                  <Text style={styles.pillarTitle}>
+                    {t('auth.instantSlotBooking', 'Instant Slot Booking')}
+                  </Text>
+                  <Text style={styles.pillarDesc}>
+                    {t('auth.instantSlotDesc', 'Pick dates & slots online in seconds')}
+                  </Text>
                 </View>
               </View>
 
@@ -181,8 +246,12 @@ export default function RegisterScreen() {
                   <Icon name="clock" size={14} color="#60A5FA" />
                 </View>
                 <View style={styles.pillarTextGroup}>
-                  <Text style={styles.pillarTitle}>Live Token Updates</Text>
-                  <Text style={styles.pillarDesc}>Real-time queue tracking on your phone</Text>
+                  <Text style={styles.pillarTitle}>
+                    {t('auth.liveTokenUpdates', 'Live Token Updates')}
+                  </Text>
+                  <Text style={styles.pillarDesc}>
+                    {t('auth.liveTokenDesc', 'Real-time queue tracking on your phone')}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -190,9 +259,11 @@ export default function RegisterScreen() {
 
           {/* ================= REGISTRATION FORM CARD ================= */}
           <View style={styles.formCard}>
-            <Text style={styles.formHeading}>Create Free Account</Text>
+            <Text style={styles.formHeading}>
+              {t('auth.createFreeAccount', 'Create Free Account')}
+            </Text>
             <Text style={styles.formSubtitle}>
-              Fill in your details below to create your patient profile.
+              {t('auth.fillDetails', 'Fill in your details below to create your patient profile.')}
             </Text>
 
             {/* Error Alert */}
@@ -204,16 +275,66 @@ export default function RegisterScreen() {
             ) : null}
 
             <View style={styles.formFields}>
+              {/* Phone Status / Input */}
+              {isOtpSent ? (
+                <View style={styles.phoneSummaryCard}>
+                  <View style={styles.phoneSummaryLeft}>
+                    <Text style={styles.phoneSummaryLabel}>
+                      {t('auth.newAccountSetup', 'New Account Setup')}
+                    </Text>
+                    <Text style={styles.phoneSummaryNumber}>
+                      +91 {phoneInput}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.phoneChangeBtn}
+                    onPress={() => {
+                      setIsOtpSent(false);
+                      setOtp('');
+                      setServerError('');
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Icon name="edit" size={13} color={Colors.light.ink700} />
+                    <Text style={styles.phoneChangeBtnText}>
+                      {t('common.change', 'Change')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.inputField}>
+                  <Text style={styles.fieldLabel}>
+                    {t('auth.mobileNumber', 'Mobile Number')} *
+                  </Text>
+                  <View style={styles.inputContainer}>
+                    <View style={styles.countryCodeBox}>
+                      <Text style={styles.countryCodeText}>+91</Text>
+                    </View>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder={t('auth.enterMobile', '10-digit mobile number')}
+                      placeholderTextColor={Colors.light.ink400}
+                      keyboardType="phone-pad"
+                      maxLength={10}
+                      value={phoneInput}
+                      onChangeText={(txt) => setPhoneInput(txt.replace(/\D/g, ''))}
+                    />
+                  </View>
+                </View>
+              )}
+
               {/* Full Name */}
               <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Full Name *</Text>
+                <Text style={styles.fieldLabel}>
+                  {t('auth.fullName', 'Full Name')} *
+                </Text>
                 <View style={styles.inputContainer}>
                   <View style={styles.inputIconPrefix}>
                     <Icon name="user" size={16} color={Colors.light.ink400} />
                   </View>
                   <TextInput
                     style={styles.textInput}
-                    placeholder="e.g. Rahul Sharma"
+                    placeholder={t('auth.enterFullName', 'e.g. Soumya Chatterjee')}
                     placeholderTextColor={Colors.light.ink400}
                     value={name}
                     onChangeText={setName}
@@ -221,126 +342,111 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
-              {/* Mobile Number */}
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Mobile Number *</Text>
-                <View style={styles.inputContainer}>
-                  <View style={styles.countryCodeBox}>
-                    <Text style={styles.countryCodeText}>+91</Text>
+              {/* OTP Entry */}
+              {isOtpSent ? (
+                <>
+                  <View style={styles.inputField}>
+                    <Text
+                      style={[styles.fieldLabel, { textAlign: 'center', marginBottom: 4 }]}
+                    >
+                      {t('auth.enter6DigitOtp', 'Enter 6-digit OTP sent to your phone')}
+                    </Text>
+                    <OtpInput
+                      value={otp}
+                      onChange={setOtp}
+                      disabled={isSubmitting}
+                      autoFocus
+                    />
                   </View>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="10-digit mobile number"
-                    placeholderTextColor={Colors.light.ink400}
-                    keyboardType="phone-pad"
-                    maxLength={10}
-                    value={phone}
-                    onChangeText={setPhone}
-                  />
-                </View>
-              </View>
 
-              {/* Email Address (Optional) */}
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Email Address (Optional)</Text>
-                <View style={styles.inputContainer}>
-                  <View style={styles.inputIconPrefix}>
-                    <Icon name="mail" size={16} color={Colors.light.ink400} />
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="name@example.com"
-                    placeholderTextColor={Colors.light.ink400}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
-                  />
-                </View>
-              </View>
-
-              {/* Password */}
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Create Password *</Text>
-                <View style={styles.inputContainer}>
-                  <View style={styles.inputIconPrefix}>
-                    <Icon name="lock" size={16} color={Colors.light.ink400} />
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="At least 6 characters"
-                    placeholderTextColor={Colors.light.ink400}
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
+                  {/* Verify & Create Account Button */}
                   <TouchableOpacity
-                    style={styles.eyeBtn}
-                    onPress={() => setShowPassword(!showPassword)}
+                    style={[
+                      styles.submitBtn,
+                      (isSubmitting || otp.length < 6 || name.trim().length < 2) &&
+                        styles.submitBtnDisabled,
+                    ]}
+                    onPress={handleRegister}
+                    disabled={isSubmitting || otp.length < 6 || name.trim().length < 2}
+                    activeOpacity={0.85}
+                  >
+                    {isSubmitting ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <>
+                        <Text style={styles.submitBtnText}>
+                          {t('auth.verifyAndCreate', 'Verify & Create Account')}
+                        </Text>
+                        <Icon name="arrow-right" size={16} color="#FFFFFF" />
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Resend OTP Button */}
+                  <TouchableOpacity
+                    style={styles.resendBtn}
+                    onPress={handleRequestOtp}
+                    disabled={timer > 0 || isLoadingOtp}
+                    activeOpacity={0.7}
                   >
                     <Icon
-                      name={showPassword ? 'eye-off' : 'eye'}
-                      size={16}
-                      color={Colors.light.ink500}
+                      name="refresh-cw"
+                      size={14}
+                      color={timer > 0 ? Colors.light.ink400 : Colors.light.primary}
                     />
+                    <Text
+                      style={[
+                        styles.resendBtnText,
+                        timer > 0 && styles.resendBtnTextDisabled,
+                      ]}
+                    >
+                      {timer > 0
+                        ? `${t('auth.resendOtpIn', 'Resend OTP in')} ${Math.floor(timer / 60)}:${(timer % 60).toString().padStart(2, '0')}`
+                        : t('auth.resendOtp', 'Resend OTP')}
+                    </Text>
                   </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Confirm Password */}
-              <View style={styles.inputField}>
-                <Text style={styles.fieldLabel}>Confirm Password *</Text>
-                <View style={styles.inputContainer}>
-                  <View style={styles.inputIconPrefix}>
-                    <Icon name="lock" size={16} color={Colors.light.ink400} />
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Re-enter your password"
-                    placeholderTextColor={Colors.light.ink400}
-                    secureTextEntry={!showPassword}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                  />
-                </View>
-              </View>
-
-              {/* Terms notice */}
-              <Text style={styles.termsNotice}>
-                By signing up, you agree to our Terms of Service & Privacy Policy. Your medical data
-                is stored with enterprise-grade encryption.
-              </Text>
-
-              {/* Submit Button */}
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleRegister}
-                disabled={isSubmitting}
-                activeOpacity={0.85}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Text style={styles.submitBtnText}>Create Free Account</Text>
-                    <Icon name="arrow-right" size={16} color="#FFFFFF" />
-                  </>
-                )}
-              </TouchableOpacity>
+                </>
+              ) : (
+                /* Send OTP Button */
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    (isLoadingOtp || phoneInput.length < 10) && styles.submitBtnDisabled,
+                  ]}
+                  onPress={handleRequestOtp}
+                  disabled={isLoadingOtp || phoneInput.length < 10}
+                  activeOpacity={0.85}
+                >
+                  {isLoadingOtp ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Text style={styles.submitBtnText}>
+                        {t('auth.getOtp', 'Get Secure OTP')}
+                      </Text>
+                      <Icon name="arrow-right" size={16} color="#FFFFFF" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
 
-            {/* Back to Login Prompt */}
+            {/* Login Link */}
             <View style={styles.loginPrompt}>
-              <Text style={styles.loginPromptText}>Already have an account? </Text>
+              <Text style={styles.loginPromptText}>
+                {t('auth.haveAccount', 'Already have an account?')}{' '}
+              </Text>
               <TouchableOpacity onPress={() => router.push('/(auth)')}>
-                <Text style={styles.loginLinkText}>Sign In</Text>
+                <Text style={styles.loginLinkText}>
+                  {t('common.login', 'Login')}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* ================= HELPDESK FOOTER ================= */}
+          {/* Helpdesk Footer */}
           <View style={styles.helpdeskCard}>
-            <Text style={styles.helpdeskTitle}>Need help registering?</Text>
+            <Text style={styles.helpdeskTitle}>Need assistance with registration?</Text>
             <View style={styles.helpdeskBtnsRow}>
               <TouchableOpacity
                 style={styles.helpdeskCallBtn}
@@ -356,13 +462,12 @@ export default function RegisterScreen() {
                 onPress={() => Linking.openURL(`https://wa.me/${CLINIC_WHATSAPP}`).catch(() => {})}
                 activeOpacity={0.8}
               >
-                <Icon name="message-circle" size={13} color="#15803D" />
+                <Icon name="message-circle" size={13} color="#059669" />
                 <Text style={styles.helpdeskWhatsAppText}>WhatsApp Support</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }
@@ -370,7 +475,7 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F4F7FE',
+    backgroundColor: '#F8FAFC',
   },
   keyboardView: {
     flex: 1,
@@ -379,15 +484,18 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
     paddingBottom: Spacing.six,
-    gap: Spacing.three,
+    gap: Spacing.four,
   },
+
+  /* Top Navigation */
   topNavRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    paddingVertical: Spacing.two,
   },
   backHomeBtn: {
     flexDirection: 'row',
@@ -396,14 +504,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     backgroundColor: '#FFFFFF',
-    borderRadius: Radius.full,
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.light.border,
+    borderColor: '#E2E8F0',
+    ...Shadows.sm,
   },
   backHomeText: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.light.ink700,
+    color: Colors.light.ink800,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -412,15 +521,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#ECFDF5',
     borderColor: '#A7F3D0',
     borderWidth: 1,
-    paddingVertical: 3,
     paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: Radius.full,
   },
   liveDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: '#059669',
   },
   liveText: {
     fontSize: 10,
@@ -429,74 +538,77 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  /* Brand Hero Card */
+  /* Brand Hero Banner */
   brandHeroCard: {
     backgroundColor: '#12295E',
     borderRadius: Radius.xl,
     padding: Spacing.four,
-    gap: Spacing.three,
     ...Shadows.md,
+    gap: Spacing.three,
   },
   brandTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: 10,
   },
   brandIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: Radius.lg,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
   },
   brandLogoIcon: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
   },
   brandHeroTitle: {
     fontSize: 17,
-    fontWeight: '800',
+    fontWeight: '900',
     color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
   brandHeroSub: {
     fontSize: 10,
-    color: 'rgba(191, 219, 254, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '600',
   },
   heroTextGroup: {
     gap: 6,
   },
   heroBadge: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingVertical: 3,
+    backgroundColor: 'rgba(253, 224, 71, 0.15)',
+    borderColor: 'rgba(253, 224, 71, 0.35)',
+    borderWidth: 1,
     paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: Radius.full,
-    alignSelf: 'flex-start',
   },
   heroBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#E0E7FF',
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FDE047',
+    textTransform: 'uppercase',
   },
   heroHeading: {
-    fontSize: 19,
+    fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
-    lineHeight: 25,
+    lineHeight: 20,
   },
   heroDescription: {
-    fontSize: 12,
-    color: 'rgba(219, 234, 254, 0.8)',
-    lineHeight: 17,
+    fontSize: 11,
+    color: 'rgba(255, 255, 255, 0.75)',
+    lineHeight: 16,
   },
   pillarsGrid: {
     gap: 8,
-    paddingTop: 4,
+    marginTop: 2,
   },
   pillarItem: {
     flexDirection: 'row',
@@ -606,16 +718,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 11,
   },
-  eyeBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-  },
-  termsNotice: {
-    fontSize: 11,
-    color: Colors.light.ink500,
-    lineHeight: 16,
-    marginTop: 2,
-  },
   submitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -627,72 +729,144 @@ const styles = StyleSheet.create({
     marginTop: 4,
     ...Shadows.sm,
   },
+  submitBtnDisabled: {
+    opacity: 0.6,
+  },
   submitBtnText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  loginPrompt: {
+
+  /* OTP Summary Card */
+  phoneSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 4,
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  loginPromptText: {
-    fontSize: 13,
-    color: Colors.light.ink600,
+  phoneSummaryLeft: {
+    gap: 2,
   },
-  loginLinkText: {
-    fontSize: 13,
-    fontWeight: '800',
+  phoneSummaryLabel: {
+    fontSize: 10,
+    fontWeight: '700',
     color: Colors.light.primary,
   },
-
-  /* Helpdesk */
-  helpdeskCard: {
+  phoneSummaryNumber: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.light.ink900,
+    letterSpacing: 0.5,
+  },
+  phoneChangeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: '#FFFFFF',
-    borderRadius: Radius.xl,
-    padding: Spacing.three,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  helpdeskTitle: {
-    fontSize: 12,
-    color: Colors.light.ink500,
-    fontWeight: '600',
-  },
-  helpdeskBtnsRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  helpdeskCallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: Radius.md,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    ...Shadows.sm,
   },
-  helpdeskCallText: {
+  phoneChangeBtnText: {
     fontSize: 11,
     fontWeight: '700',
     color: Colors.light.ink700,
   },
-  helpdeskWhatsAppBtn: {
+  resendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#DCFCE7',
-    borderRadius: Radius.md,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  resendBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.light.primary,
+  },
+  resendBtnTextDisabled: {
+    color: Colors.light.ink400,
+    fontWeight: '600',
+  },
+
+  /* Login Link Prompt */
+  loginPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: Spacing.two,
+  },
+  loginPromptText: {
+    fontSize: 12,
+    color: Colors.light.ink600,
+  },
+  loginLinkText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.light.primary,
+  },
+
+  /* Helpdesk Footer */
+  helpdeskCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.xl,
+    padding: Spacing.four,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    alignItems: 'center',
+    gap: 10,
+  },
+  helpdeskTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.ink600,
+  },
+  helpdeskBtnsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  helpdeskCallBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Radius.lg,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  helpdeskCallText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.light.ink800,
+  },
+  helpdeskWhatsAppBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Radius.lg,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
   helpdeskWhatsAppText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#15803D',
+    color: '#047857',
   },
 });

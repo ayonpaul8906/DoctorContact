@@ -15,15 +15,23 @@ import {
   Easing,
   Platform,
   Alert,
+  PermissionsAndroid,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
 import { Icon } from '../../components/Icon';
-import { LanguageSwitcher } from '../../components/LanguageSwitcher';
+import {
+  KeyboardAwareScrollView,
+  type KeyboardAwareScrollViewRef,
+  NavDrawerModal,
+  ProfileMenuModal,
+} from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useLanguage } from '../../lib/language-context';
+import { getDashboardRouteForRole } from '../../lib/auth-utils';
 import {
   usePublicFeaturedDoctors,
   usePublicAllDoctors,
@@ -139,8 +147,43 @@ function getClinicLogoUrl(clinic: PublicClinic): string | null {
 
 export default function MobileHomeScreen() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const { t } = useLanguage();
+
+  const handleLogout = () => {
+    Alert.alert(
+      t('auth.logoutConfirmTitle', 'Sign Out'),
+      t('auth.logoutConfirmMsg', 'Are you sure you want to sign out?'),
+      [
+        { text: t('common.cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('auth.logout', 'Logout'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch {
+              // Ignore network error on logout
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const treatmentsYRef = useRef<number>(0);
+  const [navDrawerVisible, setNavDrawerVisible] = useState(false);
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+
+  const handleSelectDrawerSection = (section: 'treatments' | 'labs' | 'ambulance') => {
+    if (section === 'treatments' && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        y: Math.max(0, treatmentsYRef.current - 20),
+        animated: true,
+      });
+    }
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('All Cities');
@@ -155,6 +198,9 @@ export default function MobileHomeScreen() {
   const [isListening, setIsListening] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const recognitionRef = useRef<any>(null);
+
+  // Current Location detection state
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   // Active filter for All Doctors section
   const [activeDoctorSpecialty, setActiveDoctorSpecialty] = useState('All');
@@ -203,7 +249,7 @@ export default function MobileHomeScreen() {
     }
   }, [voiceModalVisible, pulseAnim]);
 
-  const stopVoiceRecognition = () => {
+  const stopVoiceRecognition = async () => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.abort();
@@ -213,12 +259,50 @@ export default function MobileHomeScreen() {
     setIsListening(false);
   };
 
-  const handleStartVoiceSearch = () => {
-    stopVoiceRecognition();
-    setVoiceStatusText('Listening... Speak doctor name or specialty');
-    setIsListening(true);
-    setVoiceModalVisible(true);
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'Doctor Contact needs access to your microphone for voice searching doctors and clinics.',
+            buttonNeutral: 'Ask Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          return false;
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('Microphone permission error:', err);
+      return false;
+    }
+  };
 
+  const handleStartVoiceSearch = async () => {
+    await stopVoiceRecognition();
+
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) {
+      Alert.alert(
+        t('voice.permissionDenied', 'Microphone Permission Required'),
+        t(
+          'voice.permissionDeniedMsg',
+          'Please grant microphone permission to use voice search for doctors, clinics, and medical specialties.'
+        )
+      );
+      return;
+    }
+
+    setVoiceModalVisible(true);
+    setIsListening(true);
+    setVoiceStatusText('Listening... Speak doctor name or specialty');
+
+    // Web Speech API fallback for web preview
     if (typeof window !== 'undefined') {
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -267,25 +351,108 @@ export default function MobileHomeScreen() {
       }
     }
 
-    // If Web Speech API not available or native mobile, give quick helpful status
     setTimeout(() => {
-      setVoiceStatusText('Speak now or choose a suggestion below:');
-    }, 1200);
+      setVoiceStatusText('Listening... Say a doctor name or pick a suggestion:');
+    }, 1500);
   };
 
-  const handleCloseVoiceModal = () => {
-    stopVoiceRecognition();
+  const handleCloseVoiceModal = async () => {
+    await stopVoiceRecognition();
     setVoiceModalVisible(false);
   };
 
-  const handleSelectVoiceQuery = (text: string) => {
-    stopVoiceRecognition();
+  const handleSelectVoiceQuery = async (text: string) => {
+    await stopVoiceRecognition();
     setVoiceStatusText(`Selected: "${text}"`);
     setTimeout(() => {
       setSearchQuery(text);
       setVoiceModalVisible(false);
       runSearch(text, selectedLocation);
     }, 300);
+  };
+
+  // Location Detection with native GPS
+  const requestLocationPermission = async (): Promise<boolean> => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'Doctor Contact needs access to your location to find nearby clinics and available doctors.',
+            buttonNeutral: 'Ask Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          return false;
+        }
+      }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      return status === 'granted';
+    } catch (err) {
+      console.warn('Location permission error:', err);
+      return false;
+    }
+  };
+
+  const handleDetectCurrentLocation = async () => {
+    setDetectingLocation(true);
+    try {
+      const hasPermission = await requestLocationPermission();
+      if (!hasPermission) {
+        Alert.alert(
+          t('location.permissionDenied', 'Location Permission Denied'),
+          t(
+            'location.permissionDeniedMsg',
+            'Please allow location access to discover nearby clinics and available doctors.'
+          )
+        );
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const [geo] = await Location.reverseGeocodeAsync({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      });
+
+      if (geo) {
+        const cityCandidate =
+          geo.city || geo.subregion || geo.district || geo.region || '';
+        if (cityCandidate) {
+          const matched = (searchLocations || FALLBACK_LOCATIONS).find((l: any) => {
+            const name = typeof l === 'string' ? l : l.nameEn;
+            return (
+              name.toLowerCase().includes(cityCandidate.toLowerCase()) ||
+              cityCandidate.toLowerCase().includes(name.toLowerCase())
+            );
+          });
+          const chosenName = matched
+            ? typeof matched === 'string'
+              ? matched
+              : matched.nameEn
+            : cityCandidate;
+          setSelectedLocation(chosenName);
+          setLocationModalVisible(false);
+          runSearch(searchQuery, chosenName);
+          return;
+        }
+      }
+      Alert.alert(
+        'Location Detected',
+        'Could not identify exact city. Please select from the list below.'
+      );
+    } catch (err) {
+      console.warn('Location detection failed:', err);
+      Alert.alert('Location Error', 'Unable to fetch current GPS location. Please choose manually.');
+    } finally {
+      setDetectingLocation(false);
+    }
   };
 
   const runSearch = (queryStr: string, loc: string) => {
@@ -333,7 +500,7 @@ export default function MobileHomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      {/* ================= 1. TOP HEADER (LOGO.png + Live Badge + Login & Sign Up) ================= */}
+      {/* ================= 1. TOP HEADER (LOGO + Live Badge + Profile + Hamburger) ================= */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.push('/(main)')}
@@ -341,52 +508,74 @@ export default function MobileHomeScreen() {
           style={styles.logoTouchable}
         >
           <View style={styles.brandRow}>
-            <Image
-              source={require('../../assets/logo-icon.png')}
-              style={styles.headerLogoIcon}
-              resizeMode="contain"
-            />
+            <View style={styles.headerLogoIconBox}>
+              <Image
+                source={require('../../assets/logo-icon.png')}
+                style={styles.headerLogoIcon}
+                resizeMode="contain"
+                fadeDuration={0}
+                resizeMethod="resize"
+              />
+            </View>
             <Image
               source={require('../../assets/LOGO.png')}
               style={styles.headerLogo}
               resizeMode="contain"
+              fadeDuration={0}
+              resizeMethod="resize"
             />
           </View>
         </TouchableOpacity>
 
         <View style={styles.headerRight}>
-          {/* Language Switcher */}
-          <LanguageSwitcher compact />
-
           {/* Live Indicator Badge */}
-          <View style={styles.liveBadge}>
+          <TouchableOpacity
+            style={styles.liveBadge}
+            onPress={() =>
+              router.push({
+                pathname: '/(patient)/doctors',
+                params: { live: 'true' },
+              } as any)
+            }
+            activeOpacity={0.8}
+          >
             <View style={styles.liveDot} />
             <Text style={styles.liveText}>{t('common.live', 'Live')}</Text>
-          </View>
+          </TouchableOpacity>
 
-          {/* Direct Login & Sign Up Buttons */}
-          <View style={styles.authButtonsRow}>
-            <TouchableOpacity
-              style={styles.loginBtn}
-              onPress={() => router.push('/(auth)')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.loginBtnText}>{t('common.login', 'Login')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.signUpBtn}
-              onPress={() => router.push('/(auth)/register')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.signUpBtnText}>{t('common.register', 'Sign Up')}</Text>
-            </TouchableOpacity>
-          </View>
+          {/* User Profile Avatar / Account Menu */}
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={() => setProfileModalVisible(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Account and Profile"
+          >
+            {isAuthenticated && user ? (
+              <Text style={styles.profileBtnText}>
+                {(user.name?.trim()?.charAt(0) || 'U').toUpperCase()}
+              </Text>
+            ) : (
+              <Icon name="user" size={16} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+
+          {/* Hamburger Drawer Menu Button */}
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() => setNavDrawerVisible(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Navigation Menu"
+          >
+            <Icon name="menu" size={20} color="#1E293B" />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
+        ref={scrollRef as any}
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
+        extraHeight={160}
         showsVerticalScrollIndicator={false}
       >
         {/* ================= HERO SECTION ================= */}
@@ -394,18 +583,20 @@ export default function MobileHomeScreen() {
           <View style={styles.eyebrowBadge}>
             <Icon name="shield-check" size={12} color={Colors.light.primaryLight} />
             <Text style={styles.eyebrowText}>
-              Find the right health services, connect with care
+              {t('hero.eyebrow', 'Find the right health services, connect with care')}
             </Text>
           </View>
 
           <Text style={styles.heroTitle}>
-            Your Health{'\n'}
-            <Text style={styles.heroTitleAccent}>Our Priority</Text>
+            {t('hero.title1', 'Your Health')}{'\n'}
+            <Text style={styles.heroTitleAccent}>{t('hero.title2', 'Our Priority')}</Text>
           </Text>
 
           <Text style={styles.heroSubtitle}>
-            Find trusted doctors, nearby clinics, book appointments and track live queue
-            tokens — all in one unified ecosystem.
+            {t(
+              'hero.subtitle',
+              'Find trusted doctors, nearby clinics, book appointments and track live queue tokens — all in one unified ecosystem.'
+            )}
           </Text>
 
           {/* Search Card Pill */}
@@ -418,7 +609,9 @@ export default function MobileHomeScreen() {
             >
               <Icon name="map-pin" size={15} color={Colors.light.primaryLight} />
               <Text style={styles.locationText} numberOfLines={1}>
-                {selectedLocation}
+                {selectedLocation === 'All Cities'
+                  ? t('common.allLocations', 'All Cities')
+                  : selectedLocation}
               </Text>
               <Icon name="chevron-down" size={13} color={Colors.light.ink400} />
             </TouchableOpacity>
@@ -430,11 +623,16 @@ export default function MobileHomeScreen() {
               <Icon name="search" size={16} color={Colors.light.ink400} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Doctor, clinic, specialty..."
+                placeholder={t('hero.searchPlaceholder', 'Doctor, clinic, specialty...')}
                 placeholderTextColor={Colors.light.ink400}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 onSubmitEditing={handleSearch}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollRef.current?.scrollToFocusedInput?.(160);
+                  }, 100);
+                }}
               />
 
               {/* Workable Mic Button */}
@@ -460,7 +658,7 @@ export default function MobileHomeScreen() {
 
           {/* Popular Search Chips */}
           <View style={styles.popularRow}>
-            <Text style={styles.popularLabel}>Popular:</Text>
+            <Text style={styles.popularLabel}>{t('hero.popularSearches', 'Popular')}:</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -476,7 +674,7 @@ export default function MobileHomeScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.chipText}>{tag}</Text>
+                  <Text style={styles.chipText}>{t(tag, tag)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -514,10 +712,10 @@ export default function MobileHomeScreen() {
                   {/* Breathing room gap between image and text */}
                   <View style={styles.quickCardBody}>
                     <Text style={styles.quickTitleDoctor}>
-                      Find <Text style={{ color: Colors.light.primary }}>Doctors</Text>
+                      {t('quick.findDoctors', 'Find Doctors')}
                     </Text>
                     <Text style={styles.quickDesc} numberOfLines={2}>
-                      Consult verified specialists
+                      {t('quick.findDoctorsDesc', 'Consult verified specialists')}
                     </Text>
                   </View>
 
@@ -555,10 +753,10 @@ export default function MobileHomeScreen() {
                   {/* Breathing room gap between image and text */}
                   <View style={styles.quickCardBody}>
                     <Text style={styles.quickTitleClinic}>
-                      Nearby <Text style={{ color: '#0D9488' }}>Clinics</Text>
+                      {t('quick.nearbyClinics', 'Nearby Clinics')}
                     </Text>
                     <Text style={styles.quickDesc} numberOfLines={2}>
-                      Modern facilities & tokens
+                      {t('quick.nearbyClinicsDesc', 'Modern facilities & tokens')}
                     </Text>
                   </View>
 
@@ -599,10 +797,10 @@ export default function MobileHomeScreen() {
                   {/* Breathing room gap between image and text */}
                   <View style={styles.quickCardBody}>
                     <Text style={styles.quickTitleLab}>
-                      Diagnostic <Text style={{ color: '#7C3AED' }}>Labs</Text>
+                      {t('quick.diagnosticLabs', 'Diagnostic Labs')}
                     </Text>
                     <Text style={styles.quickDesc} numberOfLines={2}>
-                      Pathology tests & scans
+                      {t('quick.diagnosticLabsDesc', 'Pathology tests & scans')}
                     </Text>
                   </View>
 
@@ -625,8 +823,11 @@ export default function MobileHomeScreen() {
                   style={styles.quickCardInnerHospital}
                   onPress={() =>
                     Alert.alert(
-                      'Hospitals Network',
-                      'Multi-specialty hospital chambers and emergency inpatient care is coming soon to Doctor Contact!'
+                      t('quick.multiHospitals', 'Multi Hospitals'),
+                      t(
+                        'quick.hospitalSoonMsg',
+                        'Multi-specialty hospital chambers and emergency inpatient care is coming soon to Doctor Contact!'
+                      )
                     )
                   }
                   activeOpacity={0.85}
@@ -639,24 +840,26 @@ export default function MobileHomeScreen() {
                     />
                     <View style={styles.hospitalFloatingBadge}>
                       <Icon name="clock" size={9} color="#B45309" />
-                      <Text style={styles.hospitalFloatingBadgeText}>SOON</Text>
+                      <Text style={styles.hospitalFloatingBadgeText}>{t('quick.soon', 'SOON')}</Text>
                     </View>
                   </View>
 
                   {/* Breathing room gap between image and text */}
                   <View style={styles.quickCardBody}>
                     <Text style={styles.quickTitleHospital}>
-                      Multi <Text style={{ color: '#D97706' }}>Hospitals</Text>
+                      {t('quick.multiHospitals', 'Multi Hospitals')}
                     </Text>
                     <Text style={styles.quickDesc} numberOfLines={2}>
-                      Multi-specialty care
+                      {t('quick.multiHospitalsDesc', 'Multi-specialty care')}
                     </Text>
                   </View>
 
                   <View style={styles.quickCardFooterRow}>
                     <View style={styles.comingSoonPill}>
                       <Icon name="sparkles" size={10} color="#B45309" />
-                      <Text style={styles.comingSoonPillText}>Coming Soon</Text>
+                      <Text style={styles.comingSoonPillText}>
+                        {t('common.comingSoon', 'Coming Soon')}
+                      </Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -669,8 +872,12 @@ export default function MobileHomeScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Featured Doctors</Text>
-              <Text style={styles.sectionSubtitle}>Top rated & verified specialists</Text>
+              <Text style={styles.sectionTitle}>
+                {t('section.featuredDoctors', 'Featured Doctors')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('section.featuredDoctorsSub', 'Top rated & verified specialists')}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() =>
@@ -681,14 +888,16 @@ export default function MobileHomeScreen() {
               }
               activeOpacity={0.7}
             >
-              <Text style={styles.viewAllText}>View All →</Text>
+              <Text style={styles.viewAllText}>{t('common.viewAll', 'View All →')}</Text>
             </TouchableOpacity>
           </View>
 
           {featDoctorsLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={Colors.light.primary} />
-              <Text style={styles.loadingText}>Loading featured specialists...</Text>
+              <Text style={styles.loadingText}>
+                {t('common.loading', 'Loading featured specialists...')}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -737,12 +946,16 @@ export default function MobileHomeScreen() {
 
                         <View style={styles.verifiedFloatingBadge}>
                           <Icon name="check-circle" size={10} color="#FFFFFF" />
-                          <Text style={styles.verifiedFloatingText}>Verified</Text>
+                          <Text style={styles.verifiedFloatingText}>
+                            {t('common.verified', 'Verified')}
+                          </Text>
                         </View>
 
                         {doc.experience ? (
                           <View style={styles.expFloatingBadge}>
-                            <Text style={styles.expFloatingText}>{doc.experience}+ yrs</Text>
+                            <Text style={styles.expFloatingText}>
+                              {doc.experience}+ {t('doctor.yrsExp', 'yrs')}
+                            </Text>
                           </View>
                         ) : null}
                       </View>
@@ -778,7 +991,7 @@ export default function MobileHomeScreen() {
                             onPress={() => handleBookDoctor(doc)}
                             activeOpacity={0.8}
                           >
-                            <Text style={styles.bookMiniBtnText}>Book</Text>
+                            <Text style={styles.bookMiniBtnText}>{t('common.book', 'Book')}</Text>
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -794,14 +1007,16 @@ export default function MobileHomeScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>All Doctors</Text>
-              <Text style={styles.sectionSubtitle}>Browse doctors across specialties</Text>
+              <Text style={styles.sectionTitle}>{t('section.allDoctors', 'All Doctors')}</Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('section.allDoctorsSub', 'Browse doctors across specialties')}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() => router.push('/(patient)/doctors')}
               activeOpacity={0.7}
             >
-              <Text style={styles.viewAllText}>View All →</Text>
+              <Text style={styles.viewAllText}>{t('common.viewAll', 'View All →')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -829,7 +1044,7 @@ export default function MobileHomeScreen() {
                       isSelected && styles.specialtyPillTextSelected,
                     ]}
                   >
-                    {spec}
+                    {spec === 'All' ? t('common.all', 'All') : t(spec, spec)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -839,7 +1054,9 @@ export default function MobileHomeScreen() {
           {allDoctorsLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={Colors.light.primary} />
-              <Text style={styles.loadingText}>Loading doctors directory...</Text>
+              <Text style={styles.loadingText}>
+                {t('common.loading', 'Loading doctors directory...')}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -914,11 +1131,20 @@ export default function MobileHomeScreen() {
         </View>
 
         {/* ================= 5. TREATMENTS (GRADIENT BORDER) ================= */}
-        <View style={styles.sectionContainer}>
+        <View
+          style={styles.sectionContainer}
+          onLayout={(e) => {
+            treatmentsYRef.current = e.nativeEvent.layout.y;
+          }}
+        >
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Treatments & Systems</Text>
-              <Text style={styles.sectionSubtitle}>Holistic & specialized healthcare</Text>
+              <Text style={styles.sectionTitle}>
+                {t('section.treatments', 'Treatments & Systems')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('section.treatmentsSub', 'Holistic & specialized healthcare')}
+              </Text>
             </View>
           </View>
 
@@ -941,8 +1167,12 @@ export default function MobileHomeScreen() {
                   resizeMode="cover"
                 />
                 <View style={styles.treatmentOverlay}>
-                  <Text style={styles.treatmentTitle}>Homeopathy</Text>
-                  <Text style={styles.treatmentSub}>Gentle healing</Text>
+                  <Text style={styles.treatmentTitle}>
+                    {t('treatment.homeopathy', 'Homeopathy')}
+                  </Text>
+                  <Text style={styles.treatmentSub}>
+                    {t('treatment.homeopathyDesc', 'Gentle healing')}
+                  </Text>
                 </View>
               </TouchableOpacity>
             </LinearGradient>
@@ -965,8 +1195,12 @@ export default function MobileHomeScreen() {
                   resizeMode="cover"
                 />
                 <View style={styles.treatmentOverlay}>
-                  <Text style={styles.treatmentTitle}>Allopathy</Text>
-                  <Text style={styles.treatmentSub}>Modern medicine</Text>
+                  <Text style={styles.treatmentTitle}>
+                    {t('treatment.allopathy', 'Allopathy')}
+                  </Text>
+                  <Text style={styles.treatmentSub}>
+                    {t('treatment.allopathyDesc', 'Modern medicine')}
+                  </Text>
                 </View>
               </TouchableOpacity>
             </LinearGradient>
@@ -989,8 +1223,12 @@ export default function MobileHomeScreen() {
                   resizeMode="cover"
                 />
                 <View style={styles.treatmentOverlay}>
-                  <Text style={styles.treatmentTitle}>Ayurveda</Text>
-                  <Text style={styles.treatmentSub}>Natural balance</Text>
+                  <Text style={styles.treatmentTitle}>
+                    {t('treatment.ayurvedic', 'Ayurveda')}
+                  </Text>
+                  <Text style={styles.treatmentSub}>
+                    {t('treatment.ayurvedicDesc', 'Natural balance')}
+                  </Text>
                 </View>
               </TouchableOpacity>
             </LinearGradient>
@@ -1001,8 +1239,12 @@ export default function MobileHomeScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>Featured Clinics</Text>
-              <Text style={styles.sectionSubtitle}>Modern facilities & live token queues</Text>
+              <Text style={styles.sectionTitle}>
+                {t('section.featuredClinics', 'Featured Clinics')}
+              </Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('section.featuredClinicsSub', 'Modern facilities & live token queues')}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() =>
@@ -1013,14 +1255,16 @@ export default function MobileHomeScreen() {
               }
               activeOpacity={0.7}
             >
-              <Text style={styles.viewAllText}>View All →</Text>
+              <Text style={styles.viewAllText}>{t('common.viewAll', 'View All →')}</Text>
             </TouchableOpacity>
           </View>
 
           {featClinicsLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={Colors.light.primary} />
-              <Text style={styles.loadingText}>Loading featured clinics...</Text>
+              <Text style={styles.loadingText}>
+                {t('common.loading', 'Loading featured clinics...')}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -1072,7 +1316,7 @@ export default function MobileHomeScreen() {
                         <View style={styles.clinicDoctorsBadge}>
                           <Icon name="stethoscope" size={10} color="#FFFFFF" />
                           <Text style={styles.clinicDoctorsBadgeText}>
-                            {clinic.doctorsCount ?? 8} Doctors
+                            {clinic.doctorsCount ?? 8} {t('common.doctors', 'Doctors')}
                           </Text>
                         </View>
                       </View>
@@ -1107,7 +1351,7 @@ export default function MobileHomeScreen() {
                           </View>
 
                           <View style={styles.viewClinicBtn}>
-                            <Text style={styles.viewClinicBtnText}>View</Text>
+                            <Text style={styles.viewClinicBtnText}>{t('common.view', 'View')}</Text>
                             <Icon name="chevron-right" size={12} color={Colors.light.primary} />
                           </View>
                         </View>
@@ -1124,8 +1368,10 @@ export default function MobileHomeScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <View>
-              <Text style={styles.sectionTitle}>All Clinics</Text>
-              <Text style={styles.sectionSubtitle}>Complete chamber directory near you</Text>
+              <Text style={styles.sectionTitle}>{t('section.allClinics', 'All Clinics')}</Text>
+              <Text style={styles.sectionSubtitle}>
+                {t('section.allClinicsSub', 'Complete chamber directory near you')}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() =>
@@ -1136,14 +1382,16 @@ export default function MobileHomeScreen() {
               }
               activeOpacity={0.7}
             >
-              <Text style={styles.viewAllText}>View All →</Text>
+              <Text style={styles.viewAllText}>{t('common.viewAll', 'View All →')}</Text>
             </TouchableOpacity>
           </View>
 
           {allClinicsLoading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator color={Colors.light.primary} />
-              <Text style={styles.loadingText}>Loading all clinics...</Text>
+              <Text style={styles.loadingText}>
+                {t('common.loading', 'Loading all clinics...')}
+              </Text>
             </View>
           ) : (
             <ScrollView
@@ -1195,7 +1443,8 @@ export default function MobileHomeScreen() {
                           {cName}
                         </Text>
                         <Text style={styles.allClinicSub} numberOfLines={1}>
-                          {clinic.city || 'Chamber'} • {clinic.doctorsCount ?? 5} Docs
+                          {clinic.city || 'Chamber'} • {clinic.doctorsCount ?? 5}{' '}
+                          {t('common.doctors', 'Docs')}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -1224,9 +1473,14 @@ export default function MobileHomeScreen() {
                     resizeMode="cover"
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.emergencyCardTitlePurple}>Diagnostic Labs</Text>
+                    <Text style={styles.emergencyCardTitlePurple}>
+                      {t('quick.diagnosticLabs', 'Diagnostic Labs')}
+                    </Text>
                     <Text style={styles.emergencyCardDesc}>
-                      Accurate pathology reports & sample collection.
+                      {t(
+                        'quick.diagnosticLabsDesc',
+                        'Accurate pathology reports & sample collection.'
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -1235,7 +1489,7 @@ export default function MobileHomeScreen() {
                   onPress={() => router.push('/(patient)/labs')}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.labBtnText}>Book Lab Test</Text>
+                  <Text style={styles.labBtnText}>{t('common.bookTest', 'Book Lab Test')}</Text>
                 </TouchableOpacity>
               </View>
             </LinearGradient>
@@ -1255,9 +1509,14 @@ export default function MobileHomeScreen() {
                     resizeMode="cover"
                   />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.emergencyCardTitleRed}>24×7 Ambulance</Text>
+                    <Text style={styles.emergencyCardTitleRed}>
+                      {t('section.ambulance247', '24×7 Ambulance')}
+                    </Text>
                     <Text style={styles.emergencyCardDesc}>
-                      Rapid emergency response with medical support.
+                      {t(
+                        'section.ambulanceSub',
+                        'Rapid emergency response with medical support.'
+                      )}
                     </Text>
                   </View>
                 </View>
@@ -1267,7 +1526,9 @@ export default function MobileHomeScreen() {
                   activeOpacity={0.8}
                 >
                   <Icon name="phone" size={14} color="#FFFFFF" />
-                  <Text style={styles.ambBtnText}>Call Ambulance</Text>
+                  <Text style={styles.ambBtnText}>
+                    {t('section.callAmbulance', 'Call Ambulance')}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </LinearGradient>
@@ -1294,14 +1555,16 @@ export default function MobileHomeScreen() {
                   />
                 </View>
                 <View style={styles.initiativeTextCol}>
-                  <Text style={styles.initiativeSub}>AN INITIATIVE BY</Text>
+                  <Text style={styles.initiativeSub}>
+                    {t('footer.initiativeBy', 'AN INITIATIVE BY')}
+                  </Text>
                   <Text style={styles.initiativeMain}>Dewasi Group</Text>
                 </View>
               </View>
 
               {/* Elegant connector badge */}
               <View style={styles.connectorPill}>
-                <Text style={styles.connectorText}>Healthcare</Text>
+                <Text style={styles.connectorText}>{t('footer.healthcare', 'Healthcare')}</Text>
               </View>
 
               {/* Doctor Contact Box */}
@@ -1314,15 +1577,19 @@ export default function MobileHomeScreen() {
                   />
                 </View>
                 <View style={styles.initiativeTextCol}>
-                  <Text style={styles.initiativeSub}>POWERED PLATFORM</Text>
+                  <Text style={styles.initiativeSub}>
+                    {t('footer.poweredPlatform', 'POWERED PLATFORM')}
+                  </Text>
                   <Text style={styles.initiativeMain}>Doctor Contact</Text>
                 </View>
               </View>
             </View>
 
             <Text style={styles.initiativeSummary}>
-              Unifying clinics, specialists, diagnostic centers, and real-time patient
-              queues across Bengal.
+              {t(
+                'footer.taglineDesc',
+                'Unifying clinics, specialists, diagnostic centers, and real-time patient queues across Bengal.'
+              )}
             </Text>
           </LinearGradient>
 
@@ -1330,66 +1597,88 @@ export default function MobileHomeScreen() {
           <View style={styles.footerLinksGrid}>
             {/* For Patients */}
             <View style={styles.footerCol}>
-              <Text style={styles.footerColTitle}>For Patients</Text>
+              <Text style={styles.footerColTitle}>
+                {t('footer.forPatients', 'For Patients')}
+              </Text>
               <TouchableOpacity
                 onPress={() => router.push('/(patient)/doctors')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Find Doctors</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('quick.findDoctors', 'Find Doctors')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(patient)/clinics')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Explore Clinics</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.exploreClinics', 'Explore Clinics')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(auth)')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Live Queue Tokens</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.liveQueueTokens', 'Live Queue Tokens')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(patient)/labs')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Diagnostic Tests</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.diagnosticTests', 'Diagnostic Tests')}
+                </Text>
               </TouchableOpacity>
             </View>
 
             {/* For Providers */}
             <View style={styles.footerCol}>
-              <Text style={styles.footerColTitle}>For Providers</Text>
+              <Text style={styles.footerColTitle}>
+                {t('footer.forProviders', 'For Providers')}
+              </Text>
               <TouchableOpacity
                 onPress={() => router.push('/(auth)')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Doctor Portal</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.doctorPortal', 'Doctor Portal')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(auth)')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Clinic Chamber</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.clinicChamber', 'Clinic Chamber')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(auth)')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Receptionist</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('nav.receptionist', 'Receptionist')}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/(auth)')}
                 style={styles.footerLink}
               >
-                <Text style={styles.footerLinkText}>Diagnostic Center</Text>
+                <Text style={styles.footerLinkText}>
+                  {t('footer.diagnosticCenter', 'Diagnostic Center')}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Emergency & Support Contact Bar */}
           <View style={styles.contactSupportCard}>
-            <Text style={styles.contactSupportTitle}>24/7 Patient Helpdesk</Text>
+            <Text style={styles.contactSupportTitle}>
+              {t('footer.helpdesk', '24/7 Patient Helpdesk')}
+            </Text>
             <View style={styles.contactButtonsRow}>
               <TouchableOpacity
                 style={styles.contactBtnCall}
@@ -1416,20 +1705,24 @@ export default function MobileHomeScreen() {
             <View style={styles.copyrightRow}>
               <Icon name="shield-check" size={13} color="#10B981" />
               <Text style={styles.copyrightText}>
-                © 2026 Dewasi Group. All rights reserved.
+                © 2026 Doctor Contact. {t('footer.rightsReserved', 'All rights reserved.')}
               </Text>
             </View>
             <View style={styles.legalLinksRow}>
               <TouchableOpacity
                 onPress={() => Linking.openURL('https://doctorcontact.com/privacy').catch(() => {})}
               >
-                <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                <Text style={styles.legalLinkText}>
+                  {t('footer.privacyPolicy', 'Privacy Policy')}
+                </Text>
               </TouchableOpacity>
               <Text style={styles.legalDot}>•</Text>
               <TouchableOpacity
                 onPress={() => Linking.openURL('https://doctorcontact.com/terms').catch(() => {})}
               >
-                <Text style={styles.legalLinkText}>Terms of Service</Text>
+                <Text style={styles.legalLinkText}>
+                  {t('footer.termsConditions', 'Terms of Service')}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1443,7 +1736,7 @@ export default function MobileHomeScreen() {
               style={styles.devCreditCard}
             >
               <Text style={styles.devCreditText}>
-                Developed by{' '}
+                {t('footer.developedBy', 'Developed by')}{' '}
                 <Text style={styles.devCreditName}>Soumya Chatterjee</Text>
                 {' '}&{' '}
                 <Text style={styles.devCreditName}>Ayon Paul</Text>
@@ -1451,7 +1744,7 @@ export default function MobileHomeScreen() {
             </LinearGradient>
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* ================= VOICE SEARCH MODAL ================= */}
       <Modal
@@ -1471,7 +1764,9 @@ export default function MobileHomeScreen() {
           >
             {/* Header with close */}
             <View style={styles.voiceModalHeader}>
-              <Text style={styles.voiceModalTitle}>Voice Search</Text>
+              <Text style={styles.voiceModalTitle}>
+                {t('voice.voiceSearch', 'Voice Search')}
+              </Text>
               <TouchableOpacity
                 onPress={handleCloseVoiceModal}
                 style={styles.voiceCloseBtn}
@@ -1505,12 +1800,14 @@ export default function MobileHomeScreen() {
 
             <Text style={styles.voiceStatus}>{voiceStatusText}</Text>
             <Text style={styles.voicePromptSub}>
-              Tap the mic to restart, or choose a suggestion:
+              {t('voice.tapToSpeak', 'Tap the mic to restart, or choose a suggestion:')}
             </Text>
 
             {/* Suggestion Chips */}
             <View style={styles.voiceSuggestionsBox}>
-              <Text style={styles.voiceSuggestionsLabel}>Quick search terms:</Text>
+              <Text style={styles.voiceSuggestionsLabel}>
+                {t('voice.quickTerms', 'Quick search terms:')}
+              </Text>
               <View style={styles.voiceSuggestionsGrid}>
                 {VOICE_COMMAND_HINTS.map((hint) => (
                   <TouchableOpacity
@@ -1520,7 +1817,7 @@ export default function MobileHomeScreen() {
                     activeOpacity={0.7}
                   >
                     <Icon name="search" size={11} color={Colors.light.primary} />
-                    <Text style={styles.voiceChipText}>{hint}</Text>
+                    <Text style={styles.voiceChipText}>{t(hint, hint)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -1543,16 +1840,52 @@ export default function MobileHomeScreen() {
         >
           <View style={styles.locationModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select City / Location</Text>
+              <Text style={styles.modalTitle}>
+                {t('common.selectLocation', 'Select City / Location')}
+              </Text>
               <TouchableOpacity onPress={() => setLocationModalVisible(false)}>
                 <Icon name="x" size={20} color={Colors.light.ink600} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
+
+            {/* GPS Auto-Detect Location Button */}
+            <TouchableOpacity
+              style={styles.currentLocationBtn}
+              onPress={handleDetectCurrentLocation}
+              disabled={detectingLocation}
+              activeOpacity={0.8}
+            >
+              <View style={styles.currentLocationIconWrap}>
+                {detectingLocation ? (
+                  <ActivityIndicator size="small" color="#1B3A8C" />
+                ) : (
+                  <Icon name="map-pin" size={16} color="#1B3A8C" />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.currentLocationTitle}>
+                  {detectingLocation
+                    ? t('location.detecting', 'Detecting GPS location...')
+                    : t('location.useCurrent', 'Use Current Location')}
+                </Text>
+                <Text style={styles.currentLocationSub}>
+                  {t('location.useCurrentSub', 'Auto-detect your city to find nearby clinics')}
+                </Text>
+              </View>
+              <Icon name="chevron-right" size={15} color="#94A3B8" />
+            </TouchableOpacity>
+
+            <View style={styles.locationDivider} />
+
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
               {(searchLocations || FALLBACK_LOCATIONS).map((loc) => {
                 const locName = typeof loc === 'string' ? loc : loc.nameEn;
                 const locId = typeof loc === 'string' ? loc : loc.id;
                 const isSelected = selectedLocation === locName;
+                const displayName =
+                  locName === 'All Cities'
+                    ? t('common.allLocations', 'All Cities')
+                    : locName;
                 return (
                   <TouchableOpacity
                     key={locId || locName}
@@ -1576,7 +1909,7 @@ export default function MobileHomeScreen() {
                         isSelected && styles.modalLocationTextActive,
                       ]}
                     >
-                      {locName}
+                      {displayName}
                     </Text>
                     {isSelected && (
                       <Icon name="check-circle" size={16} color={Colors.light.primary} />
@@ -1588,6 +1921,19 @@ export default function MobileHomeScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* ================= HAMBURGER NAVIGATION DRAWER ================= */}
+      <NavDrawerModal
+        visible={navDrawerVisible}
+        onClose={() => setNavDrawerVisible(false)}
+        onSelectSection={handleSelectDrawerSection}
+      />
+
+      {/* ================= USER PROFILE & SETTINGS MODAL ================= */}
+      <ProfileMenuModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1601,11 +1947,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.light.border,
+    borderBottomColor: '#F1F5F9',
   },
   logoTouchable: {
     paddingVertical: 2,
@@ -1613,30 +1959,52 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 8,
+  },
+  headerLogoIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 1,
+      },
+    }),
   },
   headerLogoIcon: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
   },
   headerLogo: {
-    width: 102,
-    height: 26,
+    width: 145,
+    height: 40,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 8,
   },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: '#FFF1F2',
     borderColor: '#FECDD3',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
     borderRadius: Radius.full,
   },
   liveDot: {
@@ -1646,40 +2014,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#E11D48',
   },
   liveText: {
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
     color: '#E11D48',
     textTransform: 'uppercase',
   },
-  authButtonsRow: {
-    flexDirection: 'row',
+  profileBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#0F1B33',
     alignItems: 'center',
-    gap: 4,
-  },
-  loginBtn: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: Radius.md,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
+    justifyContent: 'center',
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
-  },
-  loginBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  signUpBtn: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.light.primary,
     ...Shadows.sm,
   },
-  signUpBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
+  profileBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
     color: '#FFFFFF',
+  },
+  menuBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   container: {
     flex: 1,
@@ -2924,6 +3288,40 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: Colors.light.ink900,
+  },
+  currentLocationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+    gap: 10,
+  },
+  currentLocationIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#DBEAFE',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1B3A8C',
+  },
+  currentLocationSub: {
+    fontSize: 11,
+    color: '#3B82F6',
+    marginTop: 1,
+  },
+  locationDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginBottom: 8,
   },
   modalLocationItem: {
     flexDirection: 'row',

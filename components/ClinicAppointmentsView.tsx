@@ -4,46 +4,40 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Modal,
   Alert,
-  Image,
   Linking,
 } from 'react-native';
 import {
   useClinicProfile,
   useClinicDoctors,
   useClinicAppointments,
-  useBookReceptionAppointment,
   useCancelClinicAppointment,
   useUpdateAppointmentStatus,
 } from '../hooks/useClinic';
-import { useDoctorSchedules } from '../hooks/useDoctorSearch';
-import { useSearchPatientByPhone } from '../hooks/useDoctor';
 import { useAppointmentRealtime } from '../hooks/useAppointmentRealtime';
 import { GradientCard } from './GradientCard';
 import { Icon } from './Icon';
-import { StatCard } from './StatCard';
-import type { ClinicDoctor, Appointment, AppointmentStatus } from '../types';
+import { DropdownModal } from './DropdownModal';
+import { DatePickerModal } from './DatePickerModal';
+import type { Appointment, AppointmentStatus } from '../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../theme';
-import { getImageUrl } from '../utils/image';
 
-const STATUS_FILTERS: { key: AppointmentStatus | 'ALL'; label: string; color: string; bg: string }[] = [
-  { key: 'ALL', label: 'All', color: Colors.light.ink700, bg: Colors.light.surface100 },
+const STATUS_OPTIONS: { key: AppointmentStatus | 'ALL'; label: string; color: string; bg: string }[] = [
+  { key: 'ALL', label: 'All Statuses', color: Colors.light.ink700, bg: Colors.light.surface100 },
   { key: 'WAITING', label: 'Waiting', color: '#B45309', bg: '#FEF3C7' },
   { key: 'CHECKED_IN', label: 'Checked In', color: '#1D4ED8', bg: '#EFF6FF' },
   { key: 'IN_CONSULTATION', label: 'Consulting', color: '#6D28D9', bg: '#F5F3FF' },
   { key: 'COMPLETED', label: 'Completed', color: '#047857', bg: '#ECFDF5' },
   { key: 'CANCELLED', label: 'Cancelled', color: '#DC2626', bg: '#FEF2F2' },
+  { key: 'ABSENT', label: 'Absent', color: '#4B5563', bg: '#F3F4F6' },
 ];
 
 export function ClinicAppointmentsView() {
   const { isConnected } = useAppointmentRealtime();
   const { data: clinic } = useClinicProfile();
-  const clinicId = clinic?.id;
-  const { data: doctors = [], isLoading: loadingDoctors } = useClinicDoctors();
+  const { data: doctors = [] } = useClinicDoctors();
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const tomorrowStr = useMemo(() => {
@@ -58,6 +52,11 @@ export function ClinicAppointmentsView() {
   const [selectedDateMode, setSelectedDateMode] = useState<'today' | 'tomorrow' | 'custom' | 'all'>('today');
   const [customDate, setCustomDate] = useState(todayStr);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Dropdown modal visibility
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Determine active date query filter
   const activeDateFilter = useMemo(() => {
@@ -82,141 +81,6 @@ export function ClinicAppointmentsView() {
   // Action Mutations
   const cancelMutation = useCancelClinicAppointment();
   const statusMutation = useUpdateAppointmentStatus();
-  const searchPatientMutation = useSearchPatientByPhone();
-  const bookAppointmentMutation = useBookReceptionAppointment();
-
-  // Booking Modal States
-  const [showBookingModal, setShowBookingModal] = useState(false);
-  const [bookingStage, setBookingStage] = useState<1 | 2>(1); // 1: Doctor selection, 2: Slot & Patient details
-  const [bookingDoctor, setBookingDoctor] = useState<ClinicDoctor | null>(null);
-  const [bookingDateMode, setBookingDateMode] = useState<'today' | 'tomorrow' | 'custom'>('today');
-  const [bookingCustomDate, setBookingCustomDate] = useState(todayStr);
-  const [bookingScheduleId, setBookingScheduleId] = useState<string>('');
-  const [bookingSource, setBookingSource] = useState<'WALK_IN' | 'RECEPTION' | 'PHONE'>('WALK_IN');
-
-  // Patient inputs
-  const [phoneInput, setPhoneInput] = useState('');
-  const [patientLookupResult, setPatientLookupResult] = useState<{ id: string; name: string; age?: number | null } | null>(null);
-  const [isNewPatient, setIsNewPatient] = useState(false);
-  const [patientName, setPatientName] = useState('');
-  const [patientAge, setPatientAge] = useState('');
-  const [patientGender, setPatientGender] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
-
-  const activeBookingDate = useMemo(() => {
-    if (bookingDateMode === 'today') return todayStr;
-    if (bookingDateMode === 'tomorrow') return tomorrowStr;
-    return bookingCustomDate.trim() || todayStr;
-  }, [bookingDateMode, todayStr, tomorrowStr, bookingCustomDate]);
-
-  // Fetch Schedules for selected booking doctor and date
-  const { data: schedules = [], isLoading: loadingSchedules } = useDoctorSchedules(
-    bookingDoctor?.id,
-    clinicId,
-    activeBookingDate
-  );
-
-  // Auto-select first schedule
-  React.useEffect(() => {
-    if (schedules.length > 0 && !bookingScheduleId) {
-      setBookingScheduleId(schedules[0].id);
-    }
-  }, [schedules, bookingScheduleId]);
-
-  // Patient Lookup Handler
-  const handleLookupPatient = async () => {
-    const q = phoneInput.trim();
-    if (q.length < 8) {
-      Alert.alert('Search Phone', 'Please enter at least 8 digits of the patient mobile number.');
-      return;
-    }
-    try {
-      const res = await searchPatientMutation.mutateAsync(q);
-      if (res && res.id) {
-        const foundName = res.name || 'Patient';
-        setPatientLookupResult({ id: res.id, name: foundName, age: res.age });
-        setPatientName(foundName);
-        if (res.age) setPatientAge(String(res.age));
-        setIsNewPatient(false);
-      } else {
-        setPatientLookupResult(null);
-        setIsNewPatient(true);
-        Alert.alert('New Patient', 'No existing record found for this number. Please fill in patient details.');
-      }
-    } catch {
-      setPatientLookupResult(null);
-      setIsNewPatient(true);
-      Alert.alert('New Patient', 'No existing record found. Please enter patient information.');
-    }
-  };
-
-  // Submit Appointment Booking
-  const handleConfirmBooking = async () => {
-    if (!bookingDoctor || !clinicId) {
-      Alert.alert('Required', 'Please select a doctor.');
-      return;
-    }
-    if (!phoneInput.trim() || phoneInput.trim().length < 8) {
-      Alert.alert('Required', 'Please enter a valid patient contact number.');
-      return;
-    }
-    if (!patientName.trim()) {
-      Alert.alert('Required', 'Please enter patient full name.');
-      return;
-    }
-
-    try {
-      const payload: any = {
-        doctorId: bookingDoctor.id,
-        clinicId,
-        date: activeBookingDate,
-        scheduleId: bookingScheduleId || undefined,
-        bookingSource,
-      };
-
-      if (patientLookupResult?.id && !isNewPatient) {
-        payload.patientId = patientLookupResult.id;
-      } else {
-        payload.newPatient = {
-          name: patientName.trim(),
-          phone: phoneInput.trim(),
-          age: patientAge ? Number(patientAge) : undefined,
-          gender: patientGender,
-        };
-      }
-
-      const res = await bookAppointmentMutation.mutateAsync(payload);
-      const tokenNum = res?.token || res?.appointment?.token || 'Confirmed';
-
-      Alert.alert(
-        'Appointment Booked!',
-        `Token #${tokenNum} successfully issued for ${patientName} with Dr. ${bookingDoctor.user?.name || 'Doctor'} on ${activeBookingDate}.`,
-        [
-          {
-            text: 'Great',
-            onPress: () => {
-              resetBookingForm();
-              refetchAppointments();
-            },
-          },
-        ]
-      );
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to book appointment.';
-      Alert.alert('Booking Error', msg);
-    }
-  };
-
-  const resetBookingForm = () => {
-    setShowBookingModal(false);
-    setBookingStage(1);
-    setBookingDoctor(null);
-    setPhoneInput('');
-    setPatientLookupResult(null);
-    setIsNewPatient(false);
-    setPatientName('');
-    setPatientAge('');
-    setBookingScheduleId('');
-  };
 
   // Status Action Handlers
   const handleCheckIn = async (appointmentId: string) => {
@@ -309,16 +173,28 @@ export function ClinicAppointmentsView() {
     }
   };
 
+  const selectedDoctorLabel = useMemo(() => {
+    if (selectedDoctorFilter === 'ALL') return 'All Doctors';
+    const doc = doctors.find((d) => d.id === selectedDoctorFilter);
+    return doc?.user?.name ? `Dr. ${doc.user.name}` : 'Doctor';
+  }, [selectedDoctorFilter, doctors]);
+
+  const selectedStatusLabel = useMemo(() => {
+    if (selectedStatusFilter === 'ALL') return 'All Statuses';
+    const found = STATUS_OPTIONS.find((f) => f.key === selectedStatusFilter);
+    return found ? found.label : selectedStatusFilter;
+  }, [selectedStatusFilter]);
+
   return (
     <View style={styles.container}>
-      {/* 1. Header Banner & Actions */}
+      {/* 1. Header Banner */}
       <GradientCard variant="blue" style={styles.heroBanner}>
         <View style={styles.bannerContent}>
           <View style={styles.bannerTopRow}>
             <View style={styles.flex1}>
               <Text style={styles.bannerHeading}>Clinic Appointments</Text>
               <Text style={styles.bannerSub}>
-                Manage patient visits, check-ins, and schedule new bookings
+                All appointments across your clinic — filter by doctor, status, or date
               </Text>
             </View>
 
@@ -355,27 +231,11 @@ export function ClinicAppointmentsView() {
               <Text style={styles.kpiLabel}>Cancelled</Text>
             </View>
           </View>
-
-          {/* Primary Book Appointment Action */}
-          <TouchableOpacity
-            style={styles.bookAppointmentBtn}
-            onPress={() => setShowBookingModal(true)}
-            activeOpacity={0.88}
-          >
-            <View style={styles.bookBtnIconBox}>
-              <Icon name="calendar-plus" size={16} color="#FFFFFF" />
-            </View>
-            <View style={styles.flex1}>
-              <Text style={styles.bookBtnText}>+ Book New Appointment</Text>
-              <Text style={styles.bookBtnSub}>Choose doctor & register patient / walk-in</Text>
-            </View>
-            <Icon name="chevron-right" size={16} color="#FFFFFF" />
-          </TouchableOpacity>
         </View>
       </GradientCard>
 
-      {/* 2. Interactive Filter Controls */}
-      <View style={styles.filterSection}>
+      {/* 2. Professional Filter Section */}
+      <View style={styles.filterCard}>
         {/* Search Bar */}
         <View style={styles.searchBar}>
           <Icon name="search" size={15} color={Colors.light.ink400} />
@@ -393,111 +253,108 @@ export function ClinicAppointmentsView() {
           )}
         </View>
 
-        {/* Date Mode Selector */}
-        <View style={styles.dateFilterRow}>
-          {(['today', 'tomorrow', 'custom', 'all'] as const).map((mode) => {
-            const isSel = selectedDateMode === mode;
-            const labels = { today: 'Today', tomorrow: 'Tomorrow', custom: 'Pick Date', all: 'All Dates' };
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.dateFilterPill, isSel && styles.dateFilterPillActive]}
-                onPress={() => setSelectedDateMode(mode)}
+        {/* Dropdown Filters Row (Doctor & Status) */}
+        <View style={styles.dropdownsRow}>
+          {/* Doctor Dropdown Trigger */}
+          <TouchableOpacity
+            style={[
+              styles.dropdownTriggerBtn,
+              selectedDoctorFilter !== 'ALL' && styles.dropdownTriggerBtnActive,
+            ]}
+            onPress={() => setShowDoctorDropdown(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.dropdownTriggerContent}>
+              <Icon
+                name="stethoscope"
+                size={13}
+                color={selectedDoctorFilter !== 'ALL' ? Colors.light.primary : Colors.light.ink500}
+              />
+              <Text
+                style={[
+                  styles.dropdownTriggerText,
+                  selectedDoctorFilter !== 'ALL' && styles.dropdownTriggerTextActive,
+                ]}
+                numberOfLines={1}
               >
-                <Text style={[styles.dateFilterText, isSel && styles.dateFilterTextActive]}>
-                  {labels[mode]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+                {selectedDoctorLabel}
+              </Text>
+            </View>
+            <Icon name="chevron-down" size={13} color={Colors.light.ink400} />
+          </TouchableOpacity>
+
+          {/* Status Dropdown Trigger */}
+          <TouchableOpacity
+            style={[
+              styles.dropdownTriggerBtn,
+              selectedStatusFilter !== 'ALL' && styles.dropdownTriggerBtnActive,
+            ]}
+            onPress={() => setShowStatusDropdown(true)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.dropdownTriggerContent}>
+              <Icon
+                name="filter"
+                size={13}
+                color={selectedStatusFilter !== 'ALL' ? Colors.light.primary : Colors.light.ink500}
+              />
+              <Text
+                style={[
+                  styles.dropdownTriggerText,
+                  selectedStatusFilter !== 'ALL' && styles.dropdownTriggerTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedStatusLabel}
+              </Text>
+            </View>
+            <Icon name="chevron-down" size={13} color={Colors.light.ink400} />
+          </TouchableOpacity>
         </View>
 
-        {selectedDateMode === 'custom' && (
-          <View style={styles.customDateBox}>
-            <Text style={styles.customDateLabel}>Enter Date (YYYY-MM-DD):</Text>
-            <TextInput
-              style={styles.customDateInput}
-              value={customDate}
-              onChangeText={setCustomDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={Colors.light.ink400}
-            />
-          </View>
-        )}
-
-        {/* Doctor Filter Strip */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
+        {/* Date Selector Row */}
+        <View style={styles.dateSelectorRow}>
           <TouchableOpacity
-            style={[styles.docFilterChip, selectedDoctorFilter === 'ALL' && styles.docFilterChipActive]}
-            onPress={() => setSelectedDoctorFilter('ALL')}
+            style={[styles.datePill, selectedDateMode === 'today' && styles.datePillActive]}
+            onPress={() => setSelectedDateMode('today')}
           >
-            <Icon
-              name="building"
-              size={12}
-              color={selectedDoctorFilter === 'ALL' ? '#FFFFFF' : Colors.light.ink600}
-            />
-            <Text
-              style={[
-                styles.docFilterChipText,
-                selectedDoctorFilter === 'ALL' && styles.docFilterChipTextActive,
-              ]}
-            >
-              All Doctors
+            <Text style={[styles.datePillText, selectedDateMode === 'today' && styles.datePillTextActive]}>
+              Today
             </Text>
           </TouchableOpacity>
 
-          {doctors.map((doc) => {
-            const isSel = selectedDoctorFilter === doc.id;
-            const dName = doc.user?.name || 'Doctor';
-            return (
-              <TouchableOpacity
-                key={doc.id}
-                style={[styles.docFilterChip, isSel && styles.docFilterChipActive]}
-                onPress={() => setSelectedDoctorFilter(doc.id)}
-              >
-                <Icon
-                  name="stethoscope"
-                  size={12}
-                  color={isSel ? '#FFFFFF' : Colors.light.primary}
-                />
-                <Text
-                  style={[styles.docFilterChipText, isSel && styles.docFilterChipTextActive]}
-                  numberOfLines={1}
-                >
-                  Dr. {dName}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+          <TouchableOpacity
+            style={[styles.datePill, selectedDateMode === 'tomorrow' && styles.datePillActive]}
+            onPress={() => setSelectedDateMode('tomorrow')}
+          >
+            <Text style={[styles.datePillText, selectedDateMode === 'tomorrow' && styles.datePillTextActive]}>
+              Tomorrow
+            </Text>
+          </TouchableOpacity>
 
-        {/* Status Filter Strip */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScrollView}>
-          {STATUS_FILTERS.map((f) => {
-            const isSel = selectedStatusFilter === f.key;
-            return (
-              <TouchableOpacity
-                key={f.key}
-                style={[
-                  styles.statusFilterChip,
-                  isSel && styles.statusFilterChipActive,
-                  { borderColor: isSel ? Colors.light.primary : Colors.light.surface200 },
-                ]}
-                onPress={() => setSelectedStatusFilter(f.key)}
-              >
-                <Text
-                  style={[
-                    styles.statusFilterText,
-                    isSel && styles.statusFilterTextActive,
-                    { color: isSel ? '#FFFFFF' : f.color },
-                  ]}
-                >
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+          <TouchableOpacity
+            style={[styles.datePill, selectedDateMode === 'custom' && styles.datePillActive]}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Icon
+              name="calendar"
+              size={12}
+              color={selectedDateMode === 'custom' ? '#FFFFFF' : Colors.light.ink600}
+            />
+            <Text style={[styles.datePillText, selectedDateMode === 'custom' && styles.datePillTextActive]}>
+              {selectedDateMode === 'custom' ? customDate : 'Calendar'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.datePill, selectedDateMode === 'all' && styles.datePillActive]}
+            onPress={() => setSelectedDateMode('all')}
+          >
+            <Text style={[styles.datePillText, selectedDateMode === 'all' && styles.datePillTextActive]}>
+              All Dates
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 3. Appointments List */}
@@ -513,12 +370,6 @@ export function ClinicAppointmentsView() {
           <Text style={styles.emptySub}>
             No appointments match the selected filters or date range.
           </Text>
-          <TouchableOpacity
-            style={styles.emptyActionBtn}
-            onPress={() => setShowBookingModal(true)}
-          >
-            <Text style={styles.emptyActionBtnText}>+ Book Appointment</Text>
-          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.appointmentsList}>
@@ -682,316 +533,51 @@ export function ClinicAppointmentsView() {
         </View>
       )}
 
-      {/* ========================================================
-          DOCTOR-LIST-WISE BOOK APPOINTMENT MODAL
-      ======================================================== */}
-      <Modal
-        visible={showBookingModal}
-        transparent
-        animationType="slide"
-        onRequestClose={resetBookingForm}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>
-                  {bookingStage === 1 ? 'Book Appointment — Select Doctor' : `Book with Dr. ${bookingDoctor?.user?.name || 'Doctor'}`}
-                </Text>
-                <Text style={styles.modalSub}>
-                  {bookingStage === 1 ? 'Step 1 of 2: Pick practicing physician' : 'Step 2 of 2: Session & patient details'}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={resetBookingForm} style={styles.modalCloseBtn}>
-                <Icon name="x" size={18} color={Colors.light.ink600} />
-              </TouchableOpacity>
-            </View>
+      {/* Filter Modals */}
+      <DropdownModal
+        visible={showDoctorDropdown}
+        onClose={() => setShowDoctorDropdown(false)}
+        title="Filter by Doctor"
+        options={[
+          { label: 'All Doctors', value: 'ALL' },
+          ...doctors.map((d) => ({
+            label: `Dr. ${d.user?.name || 'Doctor'}${d.specialization ? ` (${d.specialization})` : ''}`,
+            value: d.id,
+          })),
+        ]}
+        selectedValue={selectedDoctorFilter}
+        onSelect={(val) => {
+          setSelectedDoctorFilter(val);
+          setShowDoctorDropdown(false);
+        }}
+      />
 
-            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              {/* STAGE 1: DOCTOR SELECTION LIST */}
-              {bookingStage === 1 && (
-                <View style={styles.doctorSelectionList}>
-                  <Text style={styles.stageTitle}>Available Practicing Doctors</Text>
-                  {loadingDoctors ? (
-                    <ActivityIndicator size="small" color={Colors.light.primary} style={{ marginVertical: 20 }} />
-                  ) : doctors.length === 0 ? (
-                    <Text style={styles.emptyDoctorMsg}>No doctors assigned to this clinic.</Text>
-                  ) : (
-                    doctors.map((doc) => {
-                      const dName = doc.user?.name || 'Doctor';
-                      const avatar = doc.avatar || doc.profilePhoto;
-                      return (
-                        <TouchableOpacity
-                          key={doc.id}
-                          style={styles.doctorPickCard}
-                          onPress={() => {
-                            setBookingDoctor(doc);
-                            setBookingStage(2);
-                          }}
-                          activeOpacity={0.85}
-                        >
-                          <View style={styles.docPickAvatarWrap}>
-                            {avatar ? (
-                              <Image source={{ uri: getImageUrl(avatar) }} style={styles.docPickAvatarImg} />
-                            ) : (
-                              <View style={styles.docPickAvatarFallback}>
-                                <Text style={styles.docPickAvatarInitials}>
-                                  {dName
-                                    .split(' ')
-                                    .map((p) => p[0])
-                                    .slice(0, 2)
-                                    .join('')
-                                    .toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
+      <DropdownModal
+        visible={showStatusDropdown}
+        onClose={() => setShowStatusDropdown(false)}
+        title="Filter by Status"
+        options={STATUS_OPTIONS.map((s) => ({
+          label: s.label,
+          value: s.key,
+        }))}
+        selectedValue={selectedStatusFilter}
+        onSelect={(val) => {
+          setSelectedStatusFilter(val as any);
+          setShowStatusDropdown(false);
+        }}
+      />
 
-                          <View style={styles.docPickMeta}>
-                            <View style={styles.docPickNameRow}>
-                              <Text style={styles.docPickName}>Dr. {dName}</Text>
-                              <Icon name="check-circle" size={13} color="#10B981" />
-                            </View>
-                            <Text style={styles.docPickSpec}>{doc.specialization || 'General Physician'}</Text>
-                            <View style={styles.docPickChipsRow}>
-                              {doc.experience != null && doc.experience > 0 && (
-                                <View style={styles.docPickChip}>
-                                  <Text style={styles.docPickChipText}>{doc.experience}+ yrs</Text>
-                                </View>
-                              )}
-                              {doc.fee != null && doc.fee > 0 && (
-                                <View style={[styles.docPickChip, { backgroundColor: '#ECFDF5' }]}>
-                                  <Text style={[styles.docPickChipText, { color: '#047857' }]}>₹{doc.fee}</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
-
-                          <View style={styles.docPickSelectBtn}>
-                            <Text style={styles.docPickSelectBtnText}>Select</Text>
-                            <Icon name="chevron-right" size={14} color={Colors.light.primary} />
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </View>
-              )}
-
-              {/* STAGE 2: DATE, SESSION & PATIENT DETAILS */}
-              {bookingStage === 2 && bookingDoctor && (
-                <View style={styles.stageTwoForm}>
-                  {/* Selected Doctor Summary Card */}
-                  <View style={styles.selectedDoctorSummary}>
-                    <View style={styles.docPickAvatarFallbackSmall}>
-                      <Text style={styles.docPickAvatarInitialsSmall}>
-                        {(bookingDoctor.user?.name || 'DR')
-                          .split(' ')
-                          .map((p) => p[0])
-                          .slice(0, 2)
-                          .join('')
-                          .toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.flex1}>
-                      <Text style={styles.summaryDocName}>Dr. {bookingDoctor.user?.name}</Text>
-                      <Text style={styles.summaryDocSpec}>{bookingDoctor.specialization || 'General Physician'}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.changeDocBtn}
-                      onPress={() => setBookingStage(1)}
-                    >
-                      <Text style={styles.changeDocBtnText}>Change</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Date Selector */}
-                  <Text style={styles.inputGroupLabel}>1. APPOINTMENT DATE</Text>
-                  <View style={styles.modalDatePillsRow}>
-                    {(['today', 'tomorrow', 'custom'] as const).map((dMode) => {
-                      const isSel = bookingDateMode === dMode;
-                      const labels = { today: 'Today', tomorrow: 'Tomorrow', custom: 'Pick Date' };
-                      return (
-                        <TouchableOpacity
-                          key={dMode}
-                          style={[styles.modalDatePill, isSel && styles.modalDatePillActive]}
-                          onPress={() => setBookingDateMode(dMode)}
-                        >
-                          <Text style={[styles.modalDatePillText, isSel && styles.modalDatePillTextActive]}>
-                            {labels[dMode]}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {bookingDateMode === 'custom' && (
-                    <TextInput
-                      style={styles.textInput}
-                      value={bookingCustomDate}
-                      onChangeText={setBookingCustomDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={Colors.light.ink400}
-                    />
-                  )}
-
-                  {/* Session Slot Selector */}
-                  <Text style={styles.inputGroupLabel}>2. PRACTICE SESSION / TIME SLOT</Text>
-                  {loadingSchedules ? (
-                    <ActivityIndicator size="small" color={Colors.light.primary} style={{ marginVertical: 8 }} />
-                  ) : schedules.length === 0 ? (
-                    <View style={styles.noScheduleWarnBox}>
-                      <Icon name="clock" size={14} color="#B45309" />
-                      <Text style={styles.noScheduleWarnText}>
-                        No explicit schedule slot found for this date. Default walk-in slot will be assigned.
-                      </Text>
-                    </View>
-                  ) : (
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.slotsStrip}>
-                      {schedules.map((slot) => {
-                        const isSel = bookingScheduleId === slot.id;
-                        return (
-                          <TouchableOpacity
-                            key={slot.id}
-                            style={[styles.slotCard, isSel && styles.slotCardActive]}
-                            onPress={() => setBookingScheduleId(slot.id)}
-                          >
-                            <Icon name="clock" size={13} color={isSel ? '#FFFFFF' : Colors.light.primary} />
-                            <Text style={[styles.slotTimeText, isSel && styles.slotTimeTextActive]}>
-                              {slot.startTime} - {slot.endTime}
-                            </Text>
-                            {slot.maxPatients ? (
-                              <Text style={[styles.slotCapText, isSel && styles.slotCapTextActive]}>
-                                Max: {slot.maxPatients}
-                              </Text>
-                            ) : null}
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  )}
-
-                  {/* Booking Source */}
-                  <Text style={styles.inputGroupLabel}>3. BOOKING SOURCE</Text>
-                  <View style={styles.sourcePillsRow}>
-                    {(['WALK_IN', 'RECEPTION', 'PHONE'] as const).map((src) => {
-                      const isSel = bookingSource === src;
-                      const labels = { WALK_IN: 'Walk-In', RECEPTION: 'Front Desk', PHONE: 'Phone Booking' };
-                      return (
-                        <TouchableOpacity
-                          key={src}
-                          style={[styles.sourcePill, isSel && styles.sourcePillActive]}
-                          onPress={() => setBookingSource(src)}
-                        >
-                          <Text style={[styles.sourcePillText, isSel && styles.sourcePillTextActive]}>
-                            {labels[src]}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {/* Patient Phone Lookup */}
-                  <Text style={styles.inputGroupLabel}>4. PATIENT PHONE NUMBER *</Text>
-                  <View style={styles.phoneLookupRow}>
-                    <TextInput
-                      style={[styles.textInput, styles.flex1]}
-                      placeholder="e.g. 9876543210"
-                      value={phoneInput}
-                      onChangeText={(val) => {
-                        setPhoneInput(val);
-                        if (patientLookupResult) setPatientLookupResult(null);
-                      }}
-                      keyboardType="phone-pad"
-                      placeholderTextColor={Colors.light.ink400}
-                    />
-                    <TouchableOpacity
-                      style={styles.lookupBtn}
-                      onPress={handleLookupPatient}
-                      disabled={searchPatientMutation.isPending}
-                    >
-                      {searchPatientMutation.isPending ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.lookupBtnText}>Find</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Lookup Result Indicator */}
-                  {patientLookupResult && (
-                    <View style={styles.foundPatientCard}>
-                      <Icon name="check-circle" size={15} color="#047857" />
-                      <View style={styles.flex1}>
-                        <Text style={styles.foundPatientName}>{patientLookupResult.name}</Text>
-                        <Text style={styles.foundPatientSub}>Verified registered patient record</Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Patient Name & Age Form */}
-                  <Text style={styles.inputGroupLabel}>5. PATIENT DEMOGRAPHICS</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Patient Full Name *"
-                    value={patientName}
-                    onChangeText={setPatientName}
-                    placeholderTextColor={Colors.light.ink400}
-                  />
-
-                  <View style={styles.twoInputsRow}>
-                    <TextInput
-                      style={[styles.textInput, styles.flex1]}
-                      placeholder="Age (years)"
-                      value={patientAge}
-                      onChangeText={setPatientAge}
-                      keyboardType="numeric"
-                      placeholderTextColor={Colors.light.ink400}
-                    />
-
-                    <View style={styles.genderRow}>
-                      {(['MALE', 'FEMALE', 'OTHER'] as const).map((g) => {
-                        const isSel = patientGender === g;
-                        return (
-                          <TouchableOpacity
-                            key={g}
-                            style={[styles.genderPill, isSel && styles.genderPillActive]}
-                            onPress={() => setPatientGender(g)}
-                          >
-                            <Text style={[styles.genderPillText, isSel && styles.genderPillTextActive]}>
-                              {g[0]}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* Submit Booking Button */}
-                  <TouchableOpacity
-                    style={styles.submitBookingBtn}
-                    onPress={handleConfirmBooking}
-                    disabled={bookAppointmentMutation.isPending}
-                    activeOpacity={0.88}
-                  >
-                    {bookAppointmentMutation.isPending ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Icon name="check-circle" size={16} color="#FFFFFF" />
-                        <Text style={styles.submitBookingBtnText}>
-                          Confirm Booking & Issue Token
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      <DatePickerModal
+        visible={showDatePicker}
+        value={customDate}
+        onSelect={(d: string) => {
+          setCustomDate(d);
+          setSelectedDateMode('custom');
+          setShowDatePicker(false);
+        }}
+        onClose={() => setShowDatePicker(false)}
+        title="Select Appointment Date"
+      />
     </View>
   );
 }
@@ -1079,41 +665,20 @@ const styles = StyleSheet.create({
     height: 22,
     backgroundColor: Colors.light.surface200,
   },
-  bookAppointmentBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterCard: {
+    backgroundColor: Colors.light.surfaceWhite,
+    borderRadius: Radius.xl,
+    padding: Spacing.three,
     gap: Spacing.two,
-    backgroundColor: Colors.light.primary,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
     ...Shadows.sm,
-  },
-  bookBtnIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bookBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  bookBtnSub: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  filterSection: {
-    gap: Spacing.two,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.light.surfaceWhite,
-    borderRadius: Radius.lg,
+    backgroundColor: Colors.light.surface50,
+    borderRadius: Radius.md,
     paddingHorizontal: Spacing.three,
     paddingVertical: 8,
     borderWidth: 1,
@@ -1129,95 +694,65 @@ const styles = StyleSheet.create({
   clearSearchBtn: {
     padding: 4,
   },
-  dateFilterRow: {
+  dropdownsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.light.surfaceWhite,
-    borderRadius: Radius.lg,
-    padding: 3,
-    gap: 4,
+    gap: Spacing.two,
+  },
+  dropdownTriggerBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.light.surface50,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 9,
     borderWidth: 1,
     borderColor: Colors.light.surface200,
   },
-  dateFilterPill: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: Radius.md,
+  dropdownTriggerBtnActive: {
+    borderColor: Colors.light.primary,
+    backgroundColor: '#EFF6FF',
+  },
+  dropdownTriggerContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    flex: 1,
   },
-  dateFilterPillActive: {
-    backgroundColor: Colors.light.primary,
-  },
-  dateFilterText: {
+  dropdownTriggerText: {
     fontSize: 11,
     fontWeight: '600',
-    color: Colors.light.ink600,
+    color: Colors.light.ink700,
+    flex: 1,
   },
-  dateFilterTextActive: {
-    color: '#FFFFFF',
+  dropdownTriggerTextActive: {
+    color: Colors.light.primary,
+    fontWeight: '700',
   },
-  customDateBox: {
-    backgroundColor: Colors.light.surfaceWhite,
-    padding: Spacing.two,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
+  dateSelectorRow: {
+    flexDirection: 'row',
     gap: 4,
   },
-  customDateLabel: {
+  datePill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.light.surface100,
+  },
+  datePillActive: {
+    backgroundColor: Colors.light.primary,
+  },
+  datePillText: {
     fontSize: 10,
     fontWeight: '700',
     color: Colors.light.ink600,
   },
-  customDateInput: {
-    fontSize: 12,
-    color: Colors.light.ink900,
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.primary,
-  },
-  chipScrollView: {
-    flexDirection: 'row',
-  },
-  docFilterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.light.surfaceWhite,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-    marginRight: 6,
-  },
-  docFilterChipActive: {
-    backgroundColor: Colors.light.primary,
-    borderColor: Colors.light.primary,
-  },
-  docFilterChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.light.ink700,
-  },
-  docFilterChipTextActive: {
-    color: '#FFFFFF',
-  },
-  statusFilterChip: {
-    paddingVertical: 5,
-    paddingHorizontal: 11,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.light.surfaceWhite,
-    borderWidth: 1,
-    marginRight: 6,
-  },
-  statusFilterChipActive: {
-    backgroundColor: Colors.light.primary,
-  },
-  statusFilterText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusFilterTextActive: {
+  datePillTextActive: {
     color: '#FFFFFF',
   },
   centerState: {
@@ -1248,120 +783,108 @@ const styles = StyleSheet.create({
     color: Colors.light.ink500,
     textAlign: 'center',
   },
-  emptyActionBtn: {
-    marginTop: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: Radius.lg,
-    backgroundColor: Colors.light.primary,
-  },
-  emptyActionBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
   appointmentsList: {
     gap: Spacing.three,
   },
   appointmentCard: {
     backgroundColor: Colors.light.surfaceWhite,
     borderRadius: Radius.xl,
-    padding: Spacing.three,
+    padding: Spacing.four,
+    gap: Spacing.three,
     borderWidth: 1,
     borderColor: Colors.light.surface200,
-    gap: Spacing.two,
     ...Shadows.sm,
   },
   cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: Spacing.two,
   },
   tokenBadgeBox: {
     backgroundColor: '#EFF6FF',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: '#BFDBFE',
-    borderRadius: Radius.md,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
   },
   tokenBadgeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: Colors.light.primary,
   },
   cardHeaderMeta: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 2,
   },
   appointmentDateText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.light.ink600,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.light.ink900,
   },
   liveQueueIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#ECFDF5',
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: Radius.full,
   },
   liveQueueDot: {
-    width: 5,
-    height: 5,
-    borderRadius: Radius.full,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#10B981',
   },
   liveQueueText: {
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '600',
     color: '#047857',
   },
   statusPill: {
-    paddingVertical: 3,
     paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: Radius.full,
     borderWidth: 1,
   },
   statusPillText: {
     fontSize: 10,
     fontWeight: '700',
-    textTransform: 'uppercase',
   },
   patientInfoBox: {
-    gap: 2,
+    gap: 3,
+    backgroundColor: Colors.light.surface50,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
   },
   patientNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 6,
   },
   patientName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.light.ink900,
+    flex: 1,
   },
   sourceTag: {
-    backgroundColor: Colors.light.surface100,
-    paddingVertical: 2,
+    backgroundColor: Colors.light.surface200,
     paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: Radius.sm,
   },
   sourceTagText: {
     fontSize: 9,
-    fontWeight: '700',
-    color: Colors.light.ink500,
+    fontWeight: '600',
+    color: Colors.light.ink600,
   },
   patientMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   patientDemographics: {
     fontSize: 11,
@@ -1370,7 +893,7 @@ const styles = StyleSheet.create({
   phoneLinkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   phoneLinkText: {
     fontSize: 11,
@@ -1380,38 +903,37 @@ const styles = StyleSheet.create({
   doctorInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: Colors.light.surface100,
+    gap: 6,
+    paddingVertical: 2,
   },
   doctorNameText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.light.ink800,
   },
   doctorSpecText: {
-    fontSize: 10,
+    fontSize: 11,
     color: Colors.light.ink500,
   },
   cardActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
+    justifyContent: 'flex-end',
+    gap: Spacing.two,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.surface100,
+    paddingTop: Spacing.two,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: Spacing.three,
     paddingVertical: 6,
-    paddingHorizontal: 10,
     borderRadius: Radius.md,
-    borderWidth: 1,
   },
   checkInBtn: {
     backgroundColor: '#EFF6FF',
-    borderColor: '#BFDBFE',
   },
   checkInBtnText: {
     fontSize: 11,
@@ -1420,7 +942,6 @@ const styles = StyleSheet.create({
   },
   consultBtn: {
     backgroundColor: '#F5F3FF',
-    borderColor: '#DDD6FE',
   },
   consultBtnText: {
     fontSize: 11,
@@ -1429,7 +950,6 @@ const styles = StyleSheet.create({
   },
   completeBtn: {
     backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
   },
   completeBtnText: {
     fontSize: 11,
@@ -1438,392 +958,10 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     backgroundColor: '#FEF2F2',
-    borderColor: '#FECDD3',
-    marginLeft: 'auto',
   },
   cancelBtnText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#DC2626',
-  },
-
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: Colors.light.surfaceWhite,
-    borderTopLeftRadius: Radius.xl,
-    borderTopRightRadius: Radius.xl,
-    maxHeight: '90%',
-    paddingBottom: Spacing.six,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Spacing.four,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.light.surface200,
-  },
-  modalTitle: {
-    fontSize: Typography.fontSizes.base,
-    fontWeight: Typography.fontWeights.bold,
-    color: Colors.light.ink900,
-  },
-  modalSub: {
-    fontSize: 11,
-    color: Colors.light.ink500,
-  },
-  modalCloseBtn: {
-    padding: 6,
-  },
-  modalScrollView: {
-    padding: Spacing.four,
-  },
-  stageTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.light.ink700,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.two,
-  },
-  doctorSelectionList: {
-    gap: Spacing.two,
-  },
-  emptyDoctorMsg: {
-    fontSize: 12,
-    color: Colors.light.ink500,
-    textAlign: 'center',
-    marginVertical: 20,
-  },
-  doctorPickCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.light.surface50,
-    padding: Spacing.three,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-    gap: Spacing.two,
-  },
-  docPickAvatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
-    overflow: 'hidden',
-  },
-  docPickAvatarImg: {
-    width: 44,
-    height: 44,
-  },
-  docPickAvatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  docPickAvatarInitials: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  docPickMeta: {
-    flex: 1,
-    gap: 2,
-  },
-  docPickNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  docPickName: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.light.ink900,
-  },
-  docPickSpec: {
-    fontSize: 11,
-    color: Colors.light.ink500,
-  },
-  docPickChipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  docPickChip: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.light.surface200,
-  },
-  docPickChipText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: Colors.light.ink700,
-  },
-  docPickSelectBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: Radius.md,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  docPickSelectBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.light.primary,
-  },
-  stageTwoForm: {
-    gap: Spacing.three,
-  },
-  selectedDoctorSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
-    borderRadius: Radius.lg,
-    padding: Spacing.three,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    gap: 8,
-  },
-  docPickAvatarFallbackSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  docPickAvatarInitialsSmall: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  summaryDocName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.light.ink900,
-  },
-  summaryDocSpec: {
-    fontSize: 10,
-    color: Colors.light.ink500,
-  },
-  changeDocBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: Radius.sm,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  changeDocBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.light.primary,
-  },
-  inputGroupLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: Colors.light.ink600,
-    letterSpacing: 0.5,
-  },
-  modalDatePillsRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  modalDatePill: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.light.surface100,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-  },
-  modalDatePillActive: {
-    backgroundColor: Colors.light.primary,
-    borderColor: Colors.light.primary,
-  },
-  modalDatePillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.light.ink700,
-  },
-  modalDatePillTextActive: {
-    color: '#FFFFFF',
-  },
-  textInput: {
-    backgroundColor: Colors.light.surface50,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 9,
-    fontSize: 12,
-    color: Colors.light.ink900,
-  },
-  slotsStrip: {
-    flexDirection: 'row',
-  },
-  slotCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.light.surface50,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-    marginRight: 6,
-  },
-  slotCardActive: {
-    backgroundColor: Colors.light.primary,
-    borderColor: Colors.light.primary,
-  },
-  slotTimeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.light.ink800,
-  },
-  slotTimeTextActive: {
-    color: '#FFFFFF',
-  },
-  slotCapText: {
-    fontSize: 10,
-    color: Colors.light.ink500,
-  },
-  slotCapTextActive: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  noScheduleWarnBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFBEB',
-    padding: Spacing.two,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  noScheduleWarnText: {
-    fontSize: 11,
-    color: '#B45309',
-    flex: 1,
-  },
-  sourcePillsRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  sourcePill: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.light.surface50,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-  },
-  sourcePillActive: {
-    backgroundColor: '#EFF6FF',
-    borderColor: Colors.light.primary,
-  },
-  sourcePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.light.ink600,
-  },
-  sourcePillTextActive: {
-    color: Colors.light.primary,
-  },
-  phoneLookupRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  lookupBtn: {
-    backgroundColor: Colors.light.primary,
-    borderRadius: Radius.md,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  lookupBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  foundPatientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#ECFDF5',
-    padding: Spacing.two,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  foundPatientName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#047857',
-  },
-  foundPatientSub: {
-    fontSize: 10,
-    color: '#065F46',
-  },
-  twoInputsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  genderRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  genderPill: {
-    width: 38,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.light.surface50,
-    borderWidth: 1,
-    borderColor: Colors.light.surface200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  genderPillActive: {
-    backgroundColor: Colors.light.primary,
-    borderColor: Colors.light.primary,
-  },
-  genderPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.light.ink700,
-  },
-  genderPillTextActive: {
-    color: '#FFFFFF',
-  },
-  submitBookingBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.light.primary,
-    paddingVertical: Spacing.three,
-    borderRadius: Radius.lg,
-    marginTop: 8,
-    ...Shadows.sm,
-  },
-  submitBookingBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
 });

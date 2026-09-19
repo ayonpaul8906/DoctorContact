@@ -43,6 +43,10 @@ import {
   Icon,
   ClinicLiveQueueManager,
   ClinicAppointmentsView,
+  ClinicAddPatientFlow,
+  TimePickerModal,
+  DatePickerModal,
+  DropdownModal,
 } from '../../components';
 import type { SentDoctorRequest, WorkingHour, FollowupStatus, ClinicDoctor } from '../../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
@@ -54,7 +58,6 @@ export default function ClinicManagementScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
   const [activeTab, setActiveTab] = useState<ManagementSubTab>('queue');
-  const [selectedDoctorForQueue, setSelectedDoctorForQueue] = useState<ClinicDoctor | null>(null);
 
   useEffect(() => {
     if (
@@ -131,6 +134,10 @@ export default function ClinicManagementScreen() {
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
   const [followupDate, setFollowupDate] = useState('');
   const [followupNotes, setFollowupNotes] = useState('');
+  const [showFollowupDoctorDropdown, setShowFollowupDoctorDropdown] = useState(false);
+  const [showFollowupDatePicker, setShowFollowupDatePicker] = useState(false);
+  const [pickingScheduleTime, setPickingScheduleTime] = useState<{ dayIndex: number; field: 'openTime' | 'closeTime' } | null>(null);
+  const [showHolidayDatePicker, setShowHolidayDatePicker] = useState(false);
 
   // 4. Doctor Requests Queries & State
   const [requestsSubTab, setRequestsSubTab] = useState<'received' | 'sent'>('received');
@@ -296,7 +303,13 @@ export default function ClinicManagementScreen() {
   const currentRequestsList = requestsSubTab === 'received' ? receivedRequests : sentRequests;
   const filteredRequests = useMemo(() => {
     if (requestsStatusFilter === 'ALL') return currentRequestsList;
-    return currentRequestsList.filter((r) => r.status?.toUpperCase() === requestsStatusFilter);
+    return currentRequestsList.filter((r) => {
+      const s = r.status?.toUpperCase();
+      if (requestsStatusFilter === 'ACCEPTED') {
+        return s === 'ACCEPTED' || s === 'APPROVED';
+      }
+      return s === requestsStatusFilter;
+    });
   }, [currentRequestsList, requestsStatusFilter]);
 
   const handleRespondDoctorRequest = (associationId: string, action: 'ACCEPT' | 'REJECT', name: string) => {
@@ -322,7 +335,7 @@ export default function ClinicManagementScreen() {
   };
 
   const SUB_TABS: { key: ManagementSubTab; label: string; icon: any }[] = [
-    { key: 'queue', label: 'Queue', icon: 'list-ordered' },
+    { key: 'queue', label: 'Queue / Add Patient', icon: 'list-ordered' },
     { key: 'appointments', label: 'Appointments', icon: 'calendar' },
     { key: 'schedule', label: 'Schedule', icon: 'calendar-days' },
     { key: 'followups', label: 'Follow-ups', icon: 'calendar-clock' },
@@ -379,155 +392,14 @@ export default function ClinicManagementScreen() {
         }
       >
         {/* ========================================================
-            SUB-TAB: LIVE QUEUE
+            SUB-TAB: QUEUE / ADD PATIENT
         ======================================================== */}
         {activeTab === 'queue' && (
           <View style={styles.tabSection}>
-            {selectedDoctorForQueue && clinicId ? (
-              <ClinicLiveQueueManager
-                doctor={selectedDoctorForQueue}
-                clinicId={clinicId}
-                doctors={doctors}
-                onSelectDoctor={(doc) => setSelectedDoctorForQueue(doc)}
-                onBack={() => setSelectedDoctorForQueue(null)}
-              />
-            ) : (
-              <>
-                <GradientCard variant="blue" style={styles.bannerCard}>
-                  <View style={styles.bannerContent}>
-                    <View style={styles.headerRow}>
-                      <View style={styles.flex1}>
-                        <Text style={styles.bannerTitle}>Practice Live Queues</Text>
-                        <Text style={styles.bannerSubtitle}>
-                          Select a doctor to open and manage their live queue
-                        </Text>
-                      </View>
-                      <View style={styles.realtimeBadge}>
-                        <View
-                          style={[
-                            styles.pulseDot,
-                            { backgroundColor: isConnected ? '#10B981' : '#F59E0B' },
-                          ]}
-                        />
-                        <Text style={styles.realtimeText}>
-                          {isConnected ? 'Realtime' : 'Connecting'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.kpiRow}>
-                      <View style={styles.kpiBox}>
-                        <Text style={styles.kpiVal}>{doctors.length}</Text>
-                        <Text style={styles.kpiLabel}>Total Doctors</Text>
-                      </View>
-                      <View style={styles.kpiBox}>
-                        <Text style={[styles.kpiVal, { color: '#047857' }]}>{activeQueuesCount}</Text>
-                        <Text style={styles.kpiLabel}>Active Queues</Text>
-                      </View>
-                      <View style={styles.kpiBox}>
-                        <Text style={[styles.kpiVal, { color: '#D97706' }]}>{totalWaiting}</Text>
-                        <Text style={styles.kpiLabel}>Total Waiting</Text>
-                      </View>
-                    </View>
-                  </View>
-                </GradientCard>
-
-                {loadingDashboard || loadingDoctors ? (
-                  <View style={styles.centerState}>
-                    <ActivityIndicator size="small" color={Colors.light.primary} />
-                    <Text style={styles.centerStateText}>Synchronizing queue states...</Text>
-                  </View>
-                ) : doctors.length === 0 ? (
-                  <View style={styles.emptyContainer}>
-                    <Icon name="list-ordered" size={32} color={Colors.light.ink400} />
-                    <Text style={styles.emptyTitle}>No Doctors Registered</Text>
-                    <Text style={styles.emptySubtitle}>
-                      Associate practicing doctors with your clinic to activate patient queues.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.listContainer}>
-                    {doctors.map((doc) => {
-                      const dName = doc.user?.name || 'Doctor';
-                      const q = queueSummary.find(
-                        (item) => item.doctorId === doc.id || item.doctorName === dName
-                      );
-                      const isQueueActive = Boolean(q && (q.status === 'ACTIVE' || (q.lastTokenIssued || 0) > 0));
-                      const avatar = doc.avatar || doc.profilePhoto;
-
-                      return (
-                        <TouchableOpacity
-                          key={doc.id}
-                          style={styles.docQueueCard}
-                          onPress={() => setSelectedDoctorForQueue(doc)}
-                          activeOpacity={0.85}
-                        >
-                          <View style={styles.docQueueAvatar}>
-                            {avatar ? (
-                              <Image source={{ uri: getImageUrl(avatar) }} style={styles.docQueueImg} />
-                            ) : (
-                              <View style={styles.docQueueFallback}>
-                                <Text style={styles.docQueueInitials}>
-                                  {dName
-                                    .split(' ')
-                                    .map((p) => p[0])
-                                    .slice(0, 2)
-                                    .join('')
-                                    .toUpperCase()}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-
-                          <View style={styles.docQueueMeta}>
-                            <View style={styles.docQueueTitleRow}>
-                              <Text style={styles.docQueueName} numberOfLines={1}>
-                                Dr. {dName}
-                              </Text>
-                              <View
-                                style={[
-                                  styles.docQueueStatusBadge,
-                                  {
-                                    backgroundColor: isQueueActive ? '#ECFDF5' : '#F3F4F6',
-                                    borderColor: isQueueActive ? '#A7F3D0' : '#E5E7EB',
-                                  },
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.docQueueStatusText,
-                                    { color: isQueueActive ? '#047857' : '#6B7280' },
-                                  ]}
-                                >
-                                  {isQueueActive ? q?.status || 'Active' : 'Idle'}
-                                </Text>
-                              </View>
-                            </View>
-
-                            <Text style={styles.docQueueSpec} numberOfLines={1}>
-                              {doc.specialization || 'General Physician'}
-                            </Text>
-
-                            <View style={styles.docQueueBottomRow}>
-                              <Text style={styles.docQueueTokenMeta}>
-                                {isQueueActive
-                                  ? `Serving #${q?.currentToken || 0} • ${Math.max(0, (q?.lastTokenIssued || 0) - (q?.currentToken || 0))} waiting`
-                                  : 'No active tokens today'}
-                              </Text>
-
-                              <View style={styles.docQueueOpenBtn}>
-                                <Text style={styles.docQueueOpenBtnText}>Manage Queue</Text>
-                                <Icon name="chevron-right" size={13} color={Colors.light.primary} />
-                              </View>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </>
-            )}
+            <ClinicAddPatientFlow
+              clinicId={clinicId || ''}
+              doctors={doctors}
+            />
           </View>
         )}
 
@@ -593,24 +465,26 @@ export default function ClinicManagementScreen() {
                         <View style={styles.timeInputsRow}>
                           <View style={styles.timeCol}>
                             <Text style={styles.timeLabel}>Open Time</Text>
-                            <TextInput
-                              style={styles.timeInput}
-                              value={wh.openTime || '09:00'}
-                              onChangeText={(t) => handleUpdateTime(idx, 'openTime', t)}
-                              placeholder="09:00"
-                              placeholderTextColor={Colors.light.ink400}
-                            />
+                            <TouchableOpacity
+                              style={styles.timePickerTrigger}
+                              onPress={() => setPickingScheduleTime({ dayIndex: idx, field: 'openTime' })}
+                              activeOpacity={0.7}
+                            >
+                              <Icon name="clock" size={12} color={Colors.light.ink600} />
+                              <Text style={styles.timePickerTriggerText}>{wh.openTime || '09:00'}</Text>
+                            </TouchableOpacity>
                           </View>
                           <Text style={styles.timeSeparator}>to</Text>
                           <View style={styles.timeCol}>
                             <Text style={styles.timeLabel}>Close Time</Text>
-                            <TextInput
-                              style={styles.timeInput}
-                              value={wh.closeTime || '21:00'}
-                              onChangeText={(t) => handleUpdateTime(idx, 'closeTime', t)}
-                              placeholder="21:00"
-                              placeholderTextColor={Colors.light.ink400}
-                            />
+                            <TouchableOpacity
+                              style={styles.timePickerTrigger}
+                              onPress={() => setPickingScheduleTime({ dayIndex: idx, field: 'closeTime' })}
+                              activeOpacity={0.7}
+                            >
+                              <Icon name="clock" size={12} color={Colors.light.ink600} />
+                              <Text style={styles.timePickerTriggerText}>{wh.closeTime || '21:00'}</Text>
+                            </TouchableOpacity>
                           </View>
                         </View>
                       )}
@@ -914,7 +788,9 @@ export default function ClinicManagementScreen() {
                   const rawName = item.doctor?.user?.name || 'Doctor';
                   const docName = rawName.startsWith('Dr.') ? rawName : `Dr. ${rawName}`;
                   const isPending = item.status?.toUpperCase() === 'PENDING';
-                  const isAccepted = item.status?.toUpperCase() === 'ACCEPTED';
+                  const isAccepted =
+                    item.status?.toUpperCase() === 'ACCEPTED' ||
+                    item.status?.toUpperCase() === 'APPROVED';
 
                   return (
                     <GradientCard
@@ -934,10 +810,10 @@ export default function ClinicManagementScreen() {
                             style={[
                               styles.badge,
                               {
-                                backgroundColor: isPending
-                                  ? '#FEF3C7'
-                                  : isAccepted
+                                backgroundColor: isAccepted
                                   ? '#ECFDF5'
+                                  : isPending
+                                  ? '#FEF3C7'
                                   : '#FEF2F2',
                               },
                             ]}
@@ -946,11 +822,11 @@ export default function ClinicManagementScreen() {
                               style={[
                                 styles.badgeText,
                                 {
-                                  color: isPending
-                                    ? '#B45309'
-                                    : isAccepted
+                                  color: isAccepted
                                     ? '#047857'
-                                    : '#BE123C',
+                                    : isPending
+                                    ? '#B45309'
+                                    : '#DC2626',
                                 },
                               ]}
                             >
@@ -1033,9 +909,10 @@ export default function ClinicManagementScreen() {
                     <TextInput
                       style={[styles.formInput, { flex: 1 }]}
                       value={patientPhone}
-                      onChangeText={setPatientPhone}
+                      onChangeText={(t) => setPatientPhone(t.replace(/\D/g, '').slice(0, 10))}
                       placeholder="10-digit phone"
                       keyboardType="phone-pad"
+                      maxLength={10}
                       placeholderTextColor={Colors.light.ink400}
                     />
                     <TouchableOpacity
@@ -1062,34 +939,50 @@ export default function ClinicManagementScreen() {
                 {/* 2. Doctor selector */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>2. Select Doctor *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.docPickerStrip}>
-                    {doctors.map((doc) => {
-                      const isSel = selectedDoctorId === doc.id;
-                      return (
-                        <TouchableOpacity
-                          key={doc.id}
-                          style={[styles.docPickerPill, isSel && styles.docPickerPillActive]}
-                          onPress={() => setSelectedDoctorId(doc.id)}
-                        >
-                          <Text style={[styles.docPickerPillText, isSel && styles.docPickerPillTextActive]}>
-                            Dr. {doc.user?.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setShowFollowupDoctorDropdown(true)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Icon name="stethoscope" size={14} color={Colors.light.primary} />
+                      <Text
+                        style={[
+                          styles.dropdownTriggerText,
+                          !selectedDoctorId && { color: Colors.light.ink400 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {selectedDoctorId
+                          ? `Dr. ${doctors.find((d) => d.id === selectedDoctorId)?.user?.name || 'Doctor'}`
+                          : 'Choose Doctor'}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                  </TouchableOpacity>
                 </View>
 
                 {/* 3. Followup date */}
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>3. Follow-up Date (YYYY-MM-DD) *</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={followupDate}
-                    onChangeText={setFollowupDate}
-                    placeholder="e.g. 2026-10-15"
-                    placeholderTextColor={Colors.light.ink400}
-                  />
+                  <Text style={styles.formLabel}>3. Follow-up Date *</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setShowFollowupDatePicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Icon name="calendar" size={14} color={Colors.light.primary} />
+                      <Text
+                        style={[
+                          styles.dropdownTriggerText,
+                          !followupDate && { color: Colors.light.ink400 },
+                        ]}
+                      >
+                        {followupDate || 'Select Date from Calendar'}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                  </TouchableOpacity>
                 </View>
 
                 {/* 4. Clinical notes */}
@@ -1140,14 +1033,25 @@ export default function ClinicManagementScreen() {
 
             <View style={styles.formContainer}>
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Holiday Date (YYYY-MM-DD) *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={holidayDate}
-                  onChangeText={setHolidayDate}
-                  placeholder="e.g. 2026-10-02"
-                  placeholderTextColor={Colors.light.ink400}
-                />
+                <Text style={styles.formLabel}>Holiday Date *</Text>
+                <TouchableOpacity
+                  style={styles.dropdownTrigger}
+                  onPress={() => setShowHolidayDatePicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <Icon name="calendar" size={14} color={Colors.light.primary} />
+                    <Text
+                      style={[
+                        styles.dropdownTriggerText,
+                        !holidayDate && { color: Colors.light.ink400 },
+                      ]}
+                    >
+                      {holidayDate || 'Select Date from Calendar'}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                </TouchableOpacity>
               </View>
 
               <View style={styles.formGroup}>
@@ -1177,6 +1081,61 @@ export default function ClinicManagementScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Pickers & Modals */}
+      <TimePickerModal
+        visible={!!pickingScheduleTime}
+        value={
+          pickingScheduleTime
+            ? (workingHours[pickingScheduleTime.dayIndex]?.[pickingScheduleTime.field] || '09:00')
+            : '09:00'
+        }
+        onSelect={(val: string) => {
+          if (pickingScheduleTime) {
+            handleUpdateTime(pickingScheduleTime.dayIndex, pickingScheduleTime.field, val);
+          }
+          setPickingScheduleTime(null);
+        }}
+        onClose={() => setPickingScheduleTime(null)}
+        title={pickingScheduleTime?.field === 'openTime' ? 'Select Open Time' : 'Select Close Time'}
+      />
+
+      <DatePickerModal
+        visible={showHolidayDatePicker}
+        value={holidayDate}
+        onSelect={(date: string) => {
+          setHolidayDate(date);
+          setShowHolidayDatePicker(false);
+        }}
+        onClose={() => setShowHolidayDatePicker(false)}
+        title="Select Holiday Date"
+      />
+
+      <DatePickerModal
+        visible={showFollowupDatePicker}
+        value={followupDate}
+        onSelect={(date: string) => {
+          setFollowupDate(date);
+          setShowFollowupDatePicker(false);
+        }}
+        onClose={() => setShowFollowupDatePicker(false)}
+        title="Select Follow-up Date"
+      />
+
+      <DropdownModal
+        visible={showFollowupDoctorDropdown}
+        onClose={() => setShowFollowupDoctorDropdown(false)}
+        title="Select Doctor"
+        options={doctors.map((d) => ({
+          label: `Dr. ${d.user?.name || 'Doctor'} (${d.specialization || 'General'})`,
+          value: d.id,
+        }))}
+        selectedValue={selectedDoctorId}
+        onSelect={(val) => {
+          setSelectedDoctorId(val);
+          setShowFollowupDoctorDropdown(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1478,6 +1437,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.light.ink900,
     textAlign: 'center',
+  },
+  timePickerTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.light.surface300,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 7,
+  },
+  timePickerTriggerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.ink900,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.light.surface50,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 10,
+  },
+  dropdownTriggerText: {
+    fontSize: 13,
+    color: Colors.light.ink900,
+    fontWeight: '500',
   },
   timeSeparator: {
     fontSize: 11,
@@ -1881,5 +1873,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.light.primary,
+  },
+  queueSwitcherRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.light.surface100,
+    borderRadius: Radius.lg,
+    padding: 3,
+    gap: 3,
+    marginBottom: Spacing.two,
+  },
+  queueSwitcherBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+  },
+  queueSwitcherBtnActive: {
+    backgroundColor: Colors.light.primary,
+  },
+  queueSwitcherText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.light.ink600,
+  },
+  queueSwitcherTextActive: {
+    color: '#FFFFFF',
   },
 });

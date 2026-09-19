@@ -67,15 +67,16 @@ export default function ClinicReferralsScreen() {
   const createReferralMutation = useCreateReferral();
 
   const handlePatientSearch = async () => {
-    if (!phoneSearch.trim() || phoneSearch.trim().length < 6) {
-      Alert.alert('Search', 'Please enter a valid phone number.');
+    const cleaned = phoneSearch.trim().replace(/\D/g, '');
+    if (cleaned.length !== 10) {
+      Alert.alert('Search', 'Please enter a valid 10-digit mobile number.');
       return;
     }
     setPatientNotFound(false);
     setPatient(null);
 
     try {
-      const res = await searchPatientMutation.mutateAsync(phoneSearch.trim());
+      const res = await searchPatientMutation.mutateAsync(cleaned);
       if (res) {
         setPatient(res);
       } else {
@@ -294,8 +295,9 @@ export default function ClinicReferralsScreen() {
                     <TextInput
                       style={[styles.formInput, { flex: 1 }]}
                       value={phoneSearch}
-                      onChangeText={setPhoneSearch}
-                      placeholder="e.g. 9876543210"
+                      onChangeText={(t) => setPhoneSearch(t.replace(/\D/g, '').slice(0, 10))}
+                      maxLength={10}
+                      placeholder="10-digit mobile number"
                       keyboardType="phone-pad"
                       placeholderTextColor={Colors.light.ink400}
                     />
@@ -382,21 +384,45 @@ export default function ClinicReferralsScreen() {
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>3. Tests & Pathology *</Text>
                   <View style={styles.testsChipContainer}>
-                    {COMMON_TESTS.map((t) => {
-                      const isSel = selectedTests.includes(t);
-                      return (
-                        <TouchableOpacity
-                          key={t}
-                          style={[styles.testChip, isSel && styles.testChipActive]}
-                          onPress={() => toggleTest(t)}
-                        >
-                          <Text style={[styles.testChipText, isSel && styles.testChipTextActive]}>
-                            {t}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                      {COMMON_TESTS.map((t) => {
+                        const isSel = selectedTests.includes(t);
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[styles.testChip, isSel && styles.testChipActive]}
+                            onPress={() => toggleTest(t)}
+                          >
+                            <Text style={[styles.testChipText, isSel && styles.testChipTextActive]}>
+                              {t}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {selectedTests
+                        .filter((t) => !COMMON_TESTS.includes(t))
+                        .map((t) => (
+                          <TouchableOpacity
+                            key={t}
+                            style={[
+                              styles.testChip,
+                              styles.testChipActive,
+                              {
+                                backgroundColor: '#4F46E5',
+                                borderColor: '#4338CA',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                              },
+                            ]}
+                            onPress={() => toggleTest(t)}
+                          >
+                            <Text style={[styles.testChipText, styles.testChipTextActive]}>
+                              {t}
+                            </Text>
+                            <Icon name="x" size={12} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        ))}
+                    </View>
 
                   {/* Custom Test input */}
                   <View style={styles.searchRow}>

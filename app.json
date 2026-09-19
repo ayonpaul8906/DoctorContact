@@ -1,21 +1,32 @@
 {
   "expo": {
-    "name": "Dewasi Group",
-    "slug": "dewasi-group",
+    "name": "Doctor Contact",
+    "slug": "doctor-contact",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "scheme": "dewasigroup",
+    "icon": "./assets/logo-icon.png",
+    "scheme": "doctorcontact",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dewasigroup.app"
+      "bundleIdentifier": "com.doctorcontact.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Doctor Contact needs access to your microphone for voice searching doctors, clinics, and medical specialties.",
+        "NSLocationWhenInUseUsageDescription": "Doctor Contact needs access to your location to find nearby clinics, diagnostic labs, and available doctors."
+      }
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-icon.png",
         "backgroundColor": "#1B3A8C"
       },
-      "package": "com.dewasigroup.app"
+      "package": "com.doctorcontact.app",
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -31,7 +42,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#1B3A8C",
-          "image": "./assets/icon.png",
+          "image": "./assets/logo-icon.png",
           "imageWidth": 160
         }
       ]

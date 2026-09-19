@@ -21,6 +21,7 @@ import {
   useAddReceptionist,
   useAssignDoctorsToReceptionist,
   useChangeStaffPassword,
+  useClinicProfile,
 } from '../../hooks/useClinic';
 import {
   GradientCard,
@@ -35,16 +36,26 @@ import { getImageUrl } from '../../utils/image';
 
 export default function ClinicOverviewScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; action?: string }>();
   const [activeTab, setActiveTab] = useState<'doctors' | 'receptionists'>('doctors');
+
+  // Clinic profile
+  const { data: clinic } = useClinicProfile();
+  const clinicId = clinic?.id;
 
   useEffect(() => {
     if (params.tab === 'receptionists') {
       setActiveTab('receptionists');
+      if (params.action === 'add') {
+        setShowAddReceptionistModal(true);
+      }
     } else if (params.tab === 'doctors') {
       setActiveTab('doctors');
+      if (params.action === 'add') {
+        setShowAddDoctorModal(true);
+      }
     }
-  }, [params.tab]);
+  }, [params.tab, params.action]);
 
   // Queries
   const {
@@ -359,6 +370,7 @@ export default function ClinicOverviewScreen() {
             renderItem={({ item }) => (
               <ClinicDoctorCard
                 doctor={item}
+                clinicId={clinicId}
                 onEdit={(doc) => setSelectedDoctorForEdit(doc)}
                 onViewQueue={() => router.push('/(clinic)/management?tab=queue')}
               />
@@ -511,6 +523,7 @@ export default function ClinicOverviewScreen() {
       {/* Modals */}
       <AddDoctorModal
         isOpen={showAddDoctorModal}
+        clinicId={clinicId}
         onClose={() => {
           setShowAddDoctorModal(false);
           refetchDoctors();

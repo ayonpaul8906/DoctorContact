@@ -18,7 +18,7 @@ import {
   useMyPatientProfile,
   useUpdatePatientProfile,
 } from '../../hooks/usePatient';
-import { GradientCard, Icon } from '../../components';
+import { GradientCard, Icon, KeyboardAwareScrollView } from '../../components';
 import { updateProfileSchema } from '../../lib/validation';
 import type { Gender } from '../../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
@@ -135,16 +135,12 @@ export default function PatientProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      <KeyboardAwareScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        extraHeight={140}
+        keyboardShouldPersistTaps="handled"
       >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
           {/* Header Card */}
           <GradientCard variant="blue" style={styles.headerCard}>
             <View style={styles.headerContent}>
@@ -376,8 +372,7 @@ export default function PatientProfileScreen() {
               </View>
             )}
           </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
     </SafeAreaView>
   );
 }

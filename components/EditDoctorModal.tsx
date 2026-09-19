@@ -11,7 +11,9 @@ import {
   Alert,
 } from 'react-native';
 import { useEditDoctor } from '../hooks/useClinic';
+import { api } from '../lib/api';
 import { Icon } from './Icon';
+import { DropdownModal } from './DropdownModal';
 import type { ClinicDoctor } from '../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../theme';
 
@@ -25,16 +27,27 @@ export function EditDoctorModal({ doctor, onClose }: EditDoctorModalProps) {
   const [qualification, setQualification] = useState('');
   const [experience, setExperience] = useState('');
   const [fee, setFee] = useState('');
-  const [startTime, setStartTime] = useState('');
   const [queueMode, setQueueMode] = useState<'LIVE' | 'PRIVATE' | 'TIME_SLOT'>('LIVE');
+  const [specializations, setSpecializations] = useState<{ id: string; name: string }[]>([]);
+  const [showSpecDropdown, setShowSpecDropdown] = useState(false);
 
   useEffect(() => {
+    async function fetchSpecializations() {
+      try {
+        const res = await api.get('/specializations');
+        if (res.data?.success && Array.isArray(res.data?.data?.specializations)) {
+          setSpecializations(res.data.data.specializations);
+        }
+      } catch {
+        // fallback
+      }
+    }
     if (doctor) {
+      fetchSpecializations();
       setSpecialization(doctor.specialization || '');
       setQualification(doctor.qualification || '');
       setExperience(doctor.experience != null ? String(doctor.experience) : '');
       setFee(doctor.fee != null ? String(doctor.fee) : '');
-      setStartTime(doctor.startTime || '');
       setQueueMode(doctor.queueMode || 'LIVE');
     }
   }, [doctor]);
@@ -51,7 +64,6 @@ export function EditDoctorModal({ doctor, onClose }: EditDoctorModalProps) {
         qualification: qualification.trim() || undefined,
         experience: experience ? parseInt(experience, 10) : undefined,
         fee: fee ? parseInt(fee, 10) : undefined,
-        startTime: startTime.trim() || undefined,
         queueMode,
       });
 
@@ -81,13 +93,22 @@ export function EditDoctorModal({ doctor, onClose }: EditDoctorModalProps) {
               <View style={styles.rowTwo}>
                 <View style={styles.flex1}>
                   <Text style={styles.formLabel}>Specialization</Text>
-                  <TextInput
-                    style={styles.formInput}
-                    value={specialization}
-                    onChangeText={setSpecialization}
-                    placeholder="e.g. Cardiologist"
-                    placeholderTextColor={Colors.light.ink400}
-                  />
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setShowSpecDropdown(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownTriggerText,
+                        !specialization && styles.dropdownTriggerPlaceholder,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {specialization || '-- Select --'}
+                    </Text>
+                    <Icon name="chevron-down" size={13} color={Colors.light.ink500} />
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.flex1}>
@@ -128,17 +149,6 @@ export function EditDoctorModal({ doctor, onClose }: EditDoctorModalProps) {
                 </View>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Consultation Start Time</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={startTime}
-                  onChangeText={setStartTime}
-                  placeholder="09:00 AM"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
-
               {/* Queue Mode selector */}
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Queue Mode</Text>
@@ -176,11 +186,42 @@ export function EditDoctorModal({ doctor, onClose }: EditDoctorModalProps) {
           </ScrollView>
         </View>
       </View>
+
+      <DropdownModal
+        visible={showSpecDropdown}
+        title="Select Specialization"
+        options={specializations.map((s) => ({ label: s.name, value: s.name }))}
+        selectedValue={specialization}
+        onSelect={(val) => setSpecialization(val)}
+        onClose={() => setShowSpecDropdown(false)}
+        placeholder="Search specialization..."
+      />
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.light.surface50,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 10,
+  },
+  dropdownTriggerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.light.ink900,
+    flex: 1,
+    marginRight: 6,
+  },
+  dropdownTriggerPlaceholder: {
+    color: Colors.light.ink400,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.55)',

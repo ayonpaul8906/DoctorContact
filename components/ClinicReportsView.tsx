@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,13 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  Alert,
+  Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import {
   useClinicDoctors,
   useClinicProfile,
@@ -19,9 +25,13 @@ import {
 import { GradientCard } from './GradientCard';
 import { Icon } from './Icon';
 import { StatCard } from './StatCard';
+import { DatePickerModal } from './DatePickerModal';
 import type { ClinicDoctor } from '../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../theme';
 import { getImageUrl } from '../utils/image';
+import { TokenStorage } from '../lib/secure-store';
+import { Config } from '../lib/config';
+import { api, getAccessToken } from '../lib/api';
 
 const PERIOD_PILLS: { key: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'; label: string }[] = [
   { key: 'daily', label: 'Daily' },
@@ -37,6 +47,108 @@ const GRANULARITY_PILLS: { key: 'daily' | 'weekly' | 'monthly' | 'yearly'; label
   { key: 'monthly', label: 'Monthly' },
   { key: 'yearly', label: 'Yearly' },
 ];
+
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr || 'Select Date';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatDisplayMonth(monthStr: string): string {
+  if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return monthStr || 'Select Month';
+  const [y, m] = monthStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, 1);
+  return dt.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+interface MonthPickerModalProps {
+  visible: boolean;
+  value: string; // YYYY-MM
+  onSelect: (val: string) => void;
+  onClose: () => void;
+}
+
+const MONTH_SHORT_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+function MonthPickerModal({ visible, value, onSelect, onClose }: MonthPickerModalProps) {
+  const initialYear = useMemo(() => {
+    if (value && /^\d{4}-\d{2}$/.test(value)) {
+      return Number(value.split('-')[0]);
+    }
+    return new Date().getFullYear();
+  }, [value]);
+
+  const [selectedYear, setSelectedYear] = useState(initialYear);
+
+  useEffect(() => {
+    if (visible && value && /^\d{4}-\d{2}$/.test(value)) {
+      setSelectedYear(Number(value.split('-')[0]));
+    }
+  }, [visible, value]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Pressable style={styles.pickerModalCard} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Month</Text>
+            <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} activeOpacity={0.7}>
+              <Icon name="x" size={18} color={Colors.light.ink600} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalYearRow}>
+            <TouchableOpacity
+              style={styles.yearStepBtn}
+              onPress={() => setSelectedYear((y) => y - 1)}
+              activeOpacity={0.7}
+            >
+              <Icon name="chevron-left" size={16} color={Colors.light.ink800} />
+            </TouchableOpacity>
+            <Text style={styles.modalYearText}>{selectedYear}</Text>
+            <TouchableOpacity
+              style={styles.yearStepBtn}
+              onPress={() => setSelectedYear((y) => y + 1)}
+              activeOpacity={0.7}
+            >
+              <Icon name="chevron-right" size={16} color={Colors.light.ink800} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.monthGrid}>
+            {MONTH_SHORT_NAMES.map((mName, idx) => {
+              const monthStr = `${selectedYear}-${String(idx + 1).padStart(2, '0')}`;
+              const isSelected = value === monthStr;
+              return (
+                <TouchableOpacity
+                  key={mName}
+                  style={[styles.monthGridBtn, isSelected && styles.monthGridBtnActive]}
+                  onPress={() => {
+                    onSelect(monthStr);
+                    onClose();
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.monthGridText, isSelected && styles.monthGridTextActive]}>
+                    {mName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 export function ClinicReportsView() {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
@@ -64,6 +176,12 @@ export function ClinicReportsView() {
   }, []);
   const [growthStartDate, setGrowthStartDate] = useState(sixMonthsAgo);
   const [growthEndDate, setGrowthEndDate] = useState(today);
+
+  // Date picker modal controls
+  const [activeDatePicker, setActiveDatePicker] = useState<
+    'periodDate' | 'periodStartDate' | 'periodEndDate' | 'growthStartDate' | 'growthEndDate' | null
+  >(null);
+  const [showMonthModal, setShowMonthModal] = useState(false);
 
   // Data Queries
   const { data: clinic, isLoading: loadingClinic } = useClinicProfile();
@@ -112,6 +230,203 @@ export function ClinicReportsView() {
     if (selectedDoctor) return `Dr. ${selectedDoctor.user?.name || 'Doctor'}`;
     return 'Clinic Practice';
   }, [selectedDoctor]);
+
+  const [downloadingFormat, setDownloadingFormat] = useState<'pdf' | 'excel' | 'patientList' | null>(null);
+
+  const handleDownload = async (format: 'pdf' | 'excel') => {
+    try {
+      setDownloadingFormat(format);
+      const token = (await TokenStorage.getAccessToken()) || getAccessToken();
+
+      const queryParams: any = { format };
+      if (periodParams.date) queryParams.date = periodParams.date;
+      if (periodParams.month) queryParams.month = periodParams.month;
+      if (periodParams.year) queryParams.year = periodParams.year;
+      if (periodParams.startDate) queryParams.startDate = periodParams.startDate;
+      if (periodParams.endDate) queryParams.endDate = periodParams.endDate;
+      if (periodParams.doctorId) queryParams.doctorId = periodParams.doctorId;
+
+      const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+      const fileName = `clinic-report-${period}-${Date.now()}.${ext}`;
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const res = await api.get(`/reports/${period}`, {
+          params: queryParams,
+          responseType: 'blob',
+        });
+        const blob = new Blob([res.data], {
+          type:
+            format === 'pdf'
+              ? 'application/pdf'
+              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => {
+          try {
+            window.URL.revokeObjectURL(blobUrl);
+          } catch {}
+        }, 15000);
+        return;
+      }
+
+      // Native Mobile: download file using FileSystem with Authorization header
+      if (!token) {
+        Alert.alert('Authentication Error', 'Access token is missing. Please log in again.');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      Object.entries(queryParams).forEach(([k, v]) => {
+        if (v != null) params.append(k, String(v));
+      });
+
+      const downloadUrl = `${Config.API_URL}/reports/${period}?${params.toString()}`;
+      const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+      const fileUri = `${baseDir}${fileName}`;
+
+      const res = await FileSystem.downloadAsync(downloadUrl, fileUri, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.status >= 400) {
+        let errDetail = `Status code ${res.status}`;
+        try {
+          const content = await FileSystem.readAsStringAsync(res.uri);
+          const parsed = JSON.parse(content);
+          if (parsed.message) errDetail = parsed.message;
+        } catch {}
+        throw new Error(errDetail);
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(res.uri, {
+          mimeType:
+            format === 'pdf'
+              ? 'application/pdf'
+              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: `Clinic Report (${format.toUpperCase()})`,
+          UTI: format === 'pdf' ? 'com.adobe.pdf' : 'org.openxmlformats.spreadsheetml.sheet',
+        });
+      } else {
+        Alert.alert('Downloaded', 'Report downloaded successfully to device.');
+      }
+    } catch (err: any) {
+      let msg = err?.message || 'Failed to download report.';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const txt = await err.response.data.text();
+          const j = JSON.parse(txt);
+          if (j.message) msg = j.message;
+        } catch {}
+      } else if (err?.response?.data?.message) {
+        msg = err.response.data.message;
+      }
+      Alert.alert('Download Error', msg);
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
+
+  const handleDownloadPatientList = async () => {
+    try {
+      setDownloadingFormat('patientList');
+      const token = (await TokenStorage.getAccessToken()) || getAccessToken();
+
+      let endpoint = '/reports/patients/pdf';
+      const queryParams: any = {};
+      if (selectedDoctor && selectedDoctor !== 'ALL') {
+        const clinicId = clinic?.id || '';
+        endpoint = `/reports/doctors/${selectedDoctor.id}/clinics/${clinicId}/patients/pdf`;
+        queryParams.date = today;
+      }
+
+      const fileName = `patient-list-${today}-${Date.now()}.pdf`;
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const res = await api.get(endpoint, {
+          params: queryParams,
+          responseType: 'blob',
+        });
+        const blob = new Blob([res.data], { type: 'application/pdf' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => {
+          try {
+            window.URL.revokeObjectURL(blobUrl);
+          } catch {}
+        }, 15000);
+        return;
+      }
+
+      // Native Mobile
+      if (!token) {
+        Alert.alert('Authentication Error', 'Access token is missing. Please log in again.');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      Object.entries(queryParams).forEach(([k, v]) => {
+        if (v != null) params.append(k, String(v));
+      });
+
+      const downloadUrl = `${Config.API_URL}${endpoint}?${params.toString()}`;
+      const baseDir = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+      const fileUri = `${baseDir}${fileName}`;
+
+      const res = await FileSystem.downloadAsync(downloadUrl, fileUri, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.status >= 400) {
+        let errDetail = `Status code ${res.status}`;
+        try {
+          const content = await FileSystem.readAsStringAsync(res.uri);
+          const parsed = JSON.parse(content);
+          if (parsed.message) errDetail = parsed.message;
+        } catch {}
+        throw new Error(errDetail);
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(res.uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Patient List (PDF)',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        Alert.alert('Downloaded', 'Patient list downloaded successfully to device.');
+      }
+    } catch (err: any) {
+      let msg = err?.message || 'Failed to download patient list.';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const txt = await err.response.data.text();
+          const j = JSON.parse(txt);
+          if (j.message) msg = j.message;
+        } catch {}
+      } else if (err?.response?.data?.message) {
+        msg = err.response.data.message;
+      }
+      Alert.alert('Download Error', msg);
+    } finally {
+      setDownloadingFormat(null);
+    }
+  };
 
   // ============================================================
   // STAGE 1: DOCTOR SELECTION HUB (Just like webapp)
@@ -311,6 +626,25 @@ export function ClinicReportsView() {
           <Text style={styles.heroBannerSub}>
             Comprehensive appointment distribution, revenue estimations, and patient growth
           </Text>
+
+          {/* Patient List Download Pill */}
+          <View style={styles.heroDownloadRow}>
+            <TouchableOpacity
+              style={styles.heroDownloadBtn}
+              onPress={handleDownloadPatientList}
+              disabled={downloadingFormat !== null}
+              activeOpacity={0.8}
+            >
+              {downloadingFormat === 'patientList' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Icon name="file-text" size={13} color="#FFFFFF" />
+                  <Text style={styles.heroDownloadBtnText}>Download Patient List (PDF)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </GradientCard>
 
@@ -319,7 +653,7 @@ export function ClinicReportsView() {
       ======================================================== */}
       <GradientCard variant="indigo" style={styles.periodCard}>
         <View style={styles.periodCardContent}>
-          {/* Card Title */}
+          {/* Card Title & Download Actions */}
           <View style={styles.cardHeaderRow}>
             <View style={styles.cardHeaderLeft}>
               <View style={[styles.headerIconBox, { backgroundColor: '#4F46E5' }]}>
@@ -329,6 +663,41 @@ export function ClinicReportsView() {
                 <Text style={styles.cardHeaderTitle}>Patient Activity Report</Text>
                 <Text style={styles.cardHeaderSub}>Consultation breakdown & estimated revenue</Text>
               </View>
+            </View>
+
+            {/* PDF & Excel Download Buttons (matching webapp) */}
+            <View style={styles.downloadButtonsRow}>
+              <TouchableOpacity
+                style={[styles.downloadBtn, styles.pdfBtn]}
+                onPress={() => handleDownload('pdf')}
+                disabled={downloadingFormat !== null}
+                activeOpacity={0.8}
+              >
+                {downloadingFormat === 'pdf' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="file-text" size={12} color="#FFFFFF" />
+                    <Text style={styles.downloadBtnText}>PDF</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.downloadBtn, styles.excelBtn]}
+                onPress={() => handleDownload('excel')}
+                disabled={downloadingFormat !== null}
+                activeOpacity={0.8}
+              >
+                {downloadingFormat === 'excel' ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="file-spreadsheet" size={12} color="#FFFFFF" />
+                    <Text style={styles.downloadBtnText}>Excel</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -351,47 +720,67 @@ export function ClinicReportsView() {
             })}
           </View>
 
-          {/* Period Filter Inputs */}
+          {/* Period Filter Inputs - View Only, Date Pickups */}
           <View style={styles.filterInputsBox}>
             {(period === 'daily' || period === 'weekly') && (
               <View style={styles.filterInputGroup}>
                 <Text style={styles.inputLabel}>
                   {period === 'weekly' ? 'WEEK OF' : 'DATE'}
                 </Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={date}
-                  onChangeText={setDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={Colors.light.ink400}
-                />
+                <TouchableOpacity
+                  style={styles.pickerTriggerBtn}
+                  onPress={() => setActiveDatePicker('periodDate')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.pickerTriggerLeft}>
+                    <Icon name="calendar" size={15} color={Colors.light.primary} />
+                    <Text style={styles.pickerTriggerText}>{formatDisplayDate(date)}</Text>
+                  </View>
+                  <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                </TouchableOpacity>
               </View>
             )}
 
             {period === 'monthly' && (
               <View style={styles.filterInputGroup}>
                 <Text style={styles.inputLabel}>MONTH</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={month}
-                  onChangeText={setMonth}
-                  placeholder="YYYY-MM"
-                  placeholderTextColor={Colors.light.ink400}
-                />
+                <TouchableOpacity
+                  style={styles.pickerTriggerBtn}
+                  onPress={() => setShowMonthModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.pickerTriggerLeft}>
+                    <Icon name="calendar" size={15} color={Colors.light.primary} />
+                    <Text style={styles.pickerTriggerText}>{formatDisplayMonth(month)}</Text>
+                  </View>
+                  <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                </TouchableOpacity>
               </View>
             )}
 
             {period === 'yearly' && (
               <View style={styles.filterInputGroup}>
                 <Text style={styles.inputLabel}>YEAR</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={year}
-                  onChangeText={setYear}
-                  placeholder="YYYY"
-                  keyboardType="numeric"
-                  placeholderTextColor={Colors.light.ink400}
-                />
+                <View style={styles.yearStepperRow}>
+                  <TouchableOpacity
+                    style={styles.yearStepBtn}
+                    onPress={() => setYear((y) => String(Number(y) - 1))}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="chevron-left" size={16} color={Colors.light.ink800} />
+                  </TouchableOpacity>
+                  <View style={styles.yearDisplayBox}>
+                    <Icon name="calendar" size={15} color={Colors.light.primary} />
+                    <Text style={styles.yearDisplayText}>{year}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.yearStepBtn}
+                    onPress={() => setYear((y) => String(Number(y) + 1))}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="chevron-right" size={16} color={Colors.light.ink800} />
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -399,39 +788,38 @@ export function ClinicReportsView() {
               <View style={styles.twoInputsRow}>
                 <View style={styles.flex1}>
                   <Text style={styles.inputLabel}>FROM</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={startDate}
-                    onChangeText={setStartDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.light.ink400}
-                  />
+                  <TouchableOpacity
+                    style={styles.pickerTriggerBtn}
+                    onPress={() => setActiveDatePicker('periodStartDate')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.pickerTriggerLeft}>
+                      <Icon name="calendar" size={15} color={Colors.light.primary} />
+                      <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                        {formatDisplayDate(startDate)}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.flex1}>
                   <Text style={styles.inputLabel}>TO</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={endDate}
-                    onChangeText={setEndDate}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={Colors.light.ink400}
-                  />
+                  <TouchableOpacity
+                    style={styles.pickerTriggerBtn}
+                    onPress={() => setActiveDatePicker('periodEndDate')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.pickerTriggerLeft}>
+                      <Icon name="calendar" size={15} color={Colors.light.primary} />
+                      <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                        {formatDisplayDate(endDate)}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
-
-            <TouchableOpacity
-              style={styles.fetchReportBtn}
-              onPress={() => refetchPeriodReport()}
-              disabled={loadingPeriodReport}
-              activeOpacity={0.85}
-            >
-              {loadingPeriodReport ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.fetchReportBtnText}>Update Report</Text>
-              )}
-            </TouchableOpacity>
           </View>
 
           {/* Summary Metrics Grid */}
@@ -569,6 +957,45 @@ export function ClinicReportsView() {
             })}
           </View>
 
+          {/* Growth Date Range Pickers */}
+          <View style={styles.growthFilterBox}>
+            <View style={styles.twoInputsRow}>
+              <View style={styles.flex1}>
+                <Text style={styles.inputLabel}>START DATE</Text>
+                <TouchableOpacity
+                  style={styles.pickerTriggerBtn}
+                  onPress={() => setActiveDatePicker('growthStartDate')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.pickerTriggerLeft}>
+                    <Icon name="calendar" size={15} color="#059669" />
+                    <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                      {formatDisplayDate(growthStartDate)}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.flex1}>
+                <Text style={styles.inputLabel}>END DATE</Text>
+                <TouchableOpacity
+                  style={styles.pickerTriggerBtn}
+                  onPress={() => setActiveDatePicker('growthEndDate')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.pickerTriggerLeft}>
+                    <Icon name="calendar" size={15} color="#059669" />
+                    <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                      {formatDisplayDate(growthEndDate)}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
           {/* Growth Summary Metrics */}
           <View style={styles.growthStatsRow}>
             <View style={styles.growthStatBox}>
@@ -632,6 +1059,55 @@ export function ClinicReportsView() {
           )}
         </View>
       </GradientCard>
+
+      {/* Date Pickers */}
+      <DatePickerModal
+        visible={activeDatePicker === 'periodDate'}
+        title={period === 'weekly' ? 'Select Week' : 'Select Date'}
+        value={date}
+        onSelect={(d) => setDate(d)}
+        onClose={() => setActiveDatePicker(null)}
+      />
+
+      <DatePickerModal
+        visible={activeDatePicker === 'periodStartDate'}
+        title="Select Start Date"
+        value={startDate}
+        onSelect={(d) => setStartDate(d)}
+        onClose={() => setActiveDatePicker(null)}
+      />
+
+      <DatePickerModal
+        visible={activeDatePicker === 'periodEndDate'}
+        title="Select End Date"
+        value={endDate}
+        onSelect={(d) => setEndDate(d)}
+        onClose={() => setActiveDatePicker(null)}
+      />
+
+      <DatePickerModal
+        visible={activeDatePicker === 'growthStartDate'}
+        title="Growth Start Date"
+        value={growthStartDate}
+        onSelect={(d) => setGrowthStartDate(d)}
+        onClose={() => setActiveDatePicker(null)}
+      />
+
+      <DatePickerModal
+        visible={activeDatePicker === 'growthEndDate'}
+        title="Growth End Date"
+        value={growthEndDate}
+        onSelect={(d) => setGrowthEndDate(d)}
+        onClose={() => setActiveDatePicker(null)}
+      />
+
+      {/* Month Picker Modal */}
+      <MonthPickerModal
+        visible={showMonthModal}
+        value={month}
+        onSelect={(m) => setMonth(m)}
+        onClose={() => setShowMonthModal(false)}
+      />
     </View>
   );
 }
@@ -956,6 +1432,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.light.ink600,
   },
+  heroDownloadRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  heroDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+    ...Shadows.sm,
+  },
+  heroDownloadBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.light.primary,
+  },
   periodCard: {
     marginBottom: 0,
   },
@@ -967,11 +1463,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
   },
   cardHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    flex: 1,
+    minWidth: 150,
+  },
+  downloadButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.md,
+    ...Shadows.sm,
+  },
+  pdfBtn: {
+    backgroundColor: '#DC2626',
+  },
+  excelBtn: {
+    backgroundColor: '#059669',
+  },
+  downloadBtnText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   headerIconBox: {
     width: 32,
@@ -1032,15 +1558,131 @@ const styles = StyleSheet.create({
     color: Colors.light.ink600,
     textTransform: 'uppercase',
   },
-  textInput: {
+  pickerTriggerBtn: {
     backgroundColor: Colors.light.surfaceWhite,
     borderWidth: 1,
     borderColor: Colors.light.surface300,
     borderRadius: Radius.sm,
     paddingHorizontal: Spacing.two,
-    paddingVertical: 6,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  pickerTriggerText: {
     fontSize: 12,
+    fontWeight: '600',
     color: Colors.light.ink900,
+  },
+  yearStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  yearStepBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.light.surfaceWhite,
+    borderWidth: 1,
+    borderColor: Colors.light.surface300,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  yearDisplayBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: Colors.light.surfaceWhite,
+    borderWidth: 1,
+    borderColor: Colors.light.surface300,
+    borderRadius: Radius.sm,
+    paddingVertical: 6,
+  },
+  yearDisplayText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.light.ink900,
+  },
+  growthFilterBox: {
+    backgroundColor: Colors.light.surface50,
+    padding: Spacing.three,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.four,
+  },
+  pickerModalCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: Colors.light.surfaceWhite,
+    borderRadius: Radius.lg,
+    padding: Spacing.four,
+    gap: Spacing.three,
+    ...Shadows.md,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.light.ink900,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalYearRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.two,
+  },
+  modalYearText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.light.ink900,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'space-between',
+  },
+  monthGridBtn: {
+    width: '30%',
+    paddingVertical: 9,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.light.surface100,
+    alignItems: 'center',
+  },
+  monthGridBtnActive: {
+    backgroundColor: Colors.light.primary,
+  },
+  monthGridText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.ink700,
+  },
+  monthGridTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   twoInputsRow: {
     flexDirection: 'row',
@@ -1048,18 +1690,6 @@ const styles = StyleSheet.create({
   },
   flex1: {
     flex: 1,
-  },
-  fetchReportBtn: {
-    backgroundColor: Colors.light.primary,
-    paddingVertical: 8,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  fetchReportBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
   metricsGrid: {
     flexDirection: 'row',

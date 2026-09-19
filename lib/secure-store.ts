@@ -19,7 +19,11 @@ async function setItem(key: string, value: string): Promise<void> {
     }
     return;
   }
-  await SecureStore.setItemAsync(key, value);
+  try {
+    await SecureStore.setItemAsync(key, value);
+  } catch (err) {
+    console.warn(`[SecureStore] setItem error for key "${key}":`, err);
+  }
 }
 
 async function getItem(key: string): Promise<string | null> {
@@ -33,7 +37,12 @@ async function getItem(key: string): Promise<string | null> {
     }
     return null;
   }
-  return await SecureStore.getItemAsync(key);
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch (err) {
+    console.warn(`[SecureStore] getItem error for key "${key}":`, err);
+    return null;
+  }
 }
 
 async function deleteItem(key: string): Promise<void> {
@@ -47,7 +56,11 @@ async function deleteItem(key: string): Promise<void> {
     }
     return;
   }
-  await SecureStore.deleteItemAsync(key);
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch (err) {
+    console.warn(`[SecureStore] deleteItem error for key "${key}":`, err);
+  }
 }
 
 export const TokenStorage = {

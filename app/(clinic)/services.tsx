@@ -11,6 +11,8 @@ import {
   Modal,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,7 +46,7 @@ type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export default function ClinicServicesScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; action?: string }>();
   const [activeTab, setActiveTab] = useState<'referrals' | 'reports'>('referrals');
 
   useEffect(() => {
@@ -52,8 +54,11 @@ export default function ClinicServicesScreen() {
       setActiveTab('reports');
     } else if (params.tab === 'referrals') {
       setActiveTab('referrals');
+      if (params.action === 'create') {
+        setShowReferralModal(true);
+      }
     }
-  }, [params.tab]);
+  }, [params.tab, params.action]);
 
   // 1. Referrals Queries & State
   const {
@@ -85,14 +90,15 @@ export default function ClinicServicesScreen() {
 
   // Referral Handlers
   const handlePatientSearch = async () => {
-    if (!phoneSearch.trim() || phoneSearch.trim().length < 6) {
-      Alert.alert('Search', 'Please enter a valid phone number.');
+    const cleaned = phoneSearch.trim().replace(/\D/g, '');
+    if (cleaned.length !== 10) {
+      Alert.alert('Search', 'Please enter a valid 10-digit mobile number.');
       return;
     }
     setPatientNotFound(false);
     setPatient(null);
     try {
-      const res = await searchPatientMutation.mutateAsync(phoneSearch.trim());
+      const res = await searchPatientMutation.mutateAsync(cleaned);
       if (res) {
         setPatient(res);
       } else {
@@ -327,15 +333,24 @@ export default function ClinicServicesScreen() {
         onRequestClose={() => setShowReferralModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Issue Diagnostic Requisition</Text>
-              <TouchableOpacity onPress={() => setShowReferralModal(false)} style={styles.closeBtn}>
-                <Icon name="x" size={18} color={Colors.light.ink600} />
-              </TouchableOpacity>
-            </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', flex: 1, justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Issue Diagnostic Requisition</Text>
+                <TouchableOpacity onPress={() => setShowReferralModal(false)} style={styles.closeBtn}>
+                  <Icon name="x" size={18} color={Colors.light.ink600} />
+                </TouchableOpacity>
+              </View>
 
-            <ScrollView style={styles.scrollForm} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.scrollForm}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 50 }}
+              >
               <View style={styles.formContainer}>
                 {/* 1. Patient lookup */}
                 <View style={styles.formGroup}>
@@ -344,8 +359,9 @@ export default function ClinicServicesScreen() {
                     <TextInput
                       style={[styles.formInput, { flex: 1 }]}
                       value={phoneSearch}
-                      onChangeText={setPhoneSearch}
-                      placeholder="e.g. 9876543210"
+                      onChangeText={(t) => setPhoneSearch(t.replace(/\D/g, '').slice(0, 10))}
+                      maxLength={10}
+                      placeholder="10-digit mobile number"
                       keyboardType="phone-pad"
                       placeholderTextColor={Colors.light.ink400}
                     />
@@ -431,21 +447,45 @@ export default function ClinicServicesScreen() {
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>3. Tests & Pathology *</Text>
                   <View style={styles.testsChipContainer}>
-                    {COMMON_TESTS.map((t) => {
-                      const isSel = selectedTests.includes(t);
-                      return (
-                        <TouchableOpacity
-                          key={t}
-                          style={[styles.testChip, isSel && styles.testChipActive]}
-                          onPress={() => toggleTest(t)}
-                        >
-                          <Text style={[styles.testChipText, isSel && styles.testChipTextActive]}>
-                            {t}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                      {COMMON_TESTS.map((t) => {
+                        const isSel = selectedTests.includes(t);
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[styles.testChip, isSel && styles.testChipActive]}
+                            onPress={() => toggleTest(t)}
+                          >
+                            <Text style={[styles.testChipText, isSel && styles.testChipTextActive]}>
+                              {t}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                      {selectedTests
+                        .filter((t) => !COMMON_TESTS.includes(t))
+                        .map((t) => (
+                          <TouchableOpacity
+                            key={t}
+                            style={[
+                              styles.testChip,
+                              styles.testChipActive,
+                              {
+                                backgroundColor: '#4F46E5',
+                                borderColor: '#4338CA',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4,
+                              },
+                            ]}
+                            onPress={() => toggleTest(t)}
+                          >
+                            <Text style={[styles.testChipText, styles.testChipTextActive]}>
+                              {t}
+                            </Text>
+                            <Icon name="x" size={12} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        ))}
+                    </View>
 
                   <View style={styles.searchRow}>
                     <TextInput
@@ -488,7 +528,8 @@ export default function ClinicServicesScreen() {
                 </TouchableOpacity>
               </View>
             </ScrollView>
-          </View>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

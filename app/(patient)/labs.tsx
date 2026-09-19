@@ -111,7 +111,7 @@ export default function LabsDirectoryScreen() {
           <Icon name="search" size={17} color={Colors.light.ink400} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search lab name, blood test, city..."
+            placeholder={t('lab.searchPrompt', 'Search lab name, blood test, city...')}
             placeholderTextColor={Colors.light.ink400}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -152,7 +152,7 @@ export default function LabsDirectoryScreen() {
                 homeServiceOnly && styles.homeServicePillTextActive,
               ]}
             >
-              Home Sample Collection
+              {t('lab.homeCollection', 'Home Sample Collection')}
             </Text>
           </TouchableOpacity>
 
@@ -327,7 +327,7 @@ export default function LabsDirectoryScreen() {
                       activeOpacity={0.8}
                     >
                       <Icon name="phone" size={14} color="#7C3AED" />
-                      <Text style={styles.callButtonText}>Call Lab</Text>
+                      <Text style={styles.callButtonText}>{t('common.callLab', 'Call Lab')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -336,7 +336,7 @@ export default function LabsDirectoryScreen() {
                       activeOpacity={0.85}
                     >
                       <Icon name="calendar" size={14} color="#FFFFFF" />
-                      <Text style={styles.bookButtonText}>Book Test</Text>
+                      <Text style={styles.bookButtonText}>{t('common.bookTest', 'Book Test')}</Text>
                       <Icon name="arrow-right" size={13} color="#FFFFFF" />
                     </TouchableOpacity>
                   </View>

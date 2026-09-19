@@ -156,7 +156,7 @@ export default function ClinicsDirectoryScreen() {
           <Text
             style={[styles.tabButtonText, activeTab === 'all' && styles.tabButtonTextActive]}
           >
-            All Clinics
+            {t('section.allClinics', 'All Clinics')}
           </Text>
         </TouchableOpacity>
 
@@ -173,7 +173,7 @@ export default function ClinicsDirectoryScreen() {
           <Text
             style={[styles.tabButtonText, activeTab === 'featured' && styles.tabButtonTextActive]}
           >
-            Featured Clinics
+            {t('section.featuredClinics', 'Featured Clinics')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -184,7 +184,7 @@ export default function ClinicsDirectoryScreen() {
           <Icon name="search" size={17} color={Colors.light.ink400} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search clinic name, city, specialty..."
+            placeholder={t('clinic.searchPrompt', 'Search clinic name, city, specialty...')}
             placeholderTextColor={Colors.light.ink400}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -361,7 +361,7 @@ export default function ClinicsDirectoryScreen() {
                       <View style={styles.docCountBadge}>
                         <Icon name="stethoscope" size={12} color="#0D9488" />
                         <Text style={styles.docCountText}>
-                          {doctorsCount} Doctors
+                          {doctorsCount} {t('common.doctors', 'Doctors')}
                         </Text>
                       </View>
 
@@ -385,7 +385,9 @@ export default function ClinicsDirectoryScreen() {
                         onPress={() => handleViewDoctors(clinic)}
                         activeOpacity={0.85}
                       >
-                        <Text style={styles.viewDoctorsBtnText}>View Doctors</Text>
+                        <Text style={styles.viewDoctorsBtnText}>
+                          {t('clinic.viewDoctors', 'View Doctors')}
+                        </Text>
                         <Icon name="chevron-right" size={13} color="#FFFFFF" />
                       </TouchableOpacity>
                     </View>

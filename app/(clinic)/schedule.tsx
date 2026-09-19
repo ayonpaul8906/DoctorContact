@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -22,6 +24,8 @@ import {
 import {
   GradientCard,
   Icon,
+  TimePickerModal,
+  DatePickerModal,
 } from '../../components';
 import type { WorkingHour, DayOfWeek } from '../../types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
@@ -59,6 +63,11 @@ export default function ClinicScheduleScreen() {
   const [showAddHolidayModal, setShowAddHolidayModal] = useState(false);
   const [holidayDate, setHolidayDate] = useState('');
   const [holidayReason, setHolidayReason] = useState('');
+  const [pickingScheduleTime, setPickingScheduleTime] = useState<{
+    dayIndex: number;
+    field: 'openTime' | 'closeTime';
+  } | null>(null);
+  const [showHolidayDatePicker, setShowHolidayDatePicker] = useState(false);
 
   useEffect(() => {
     if (hoursData.length > 0) {
@@ -116,8 +125,8 @@ export default function ClinicScheduleScreen() {
   };
 
   const handleAddHoliday = async () => {
-    if (!holidayDate.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(holidayDate.trim())) {
-      Alert.alert('Invalid Date', 'Please enter date in YYYY-MM-DD format (e.g. 2026-09-15).');
+    if (!holidayDate.trim()) {
+      Alert.alert('Required', 'Please select a holiday date from the calendar.');
       return;
     }
 
@@ -240,26 +249,28 @@ export default function ClinicScheduleScreen() {
                         <View style={styles.timeInputsRow}>
                           <View style={styles.timeInputCol}>
                             <Text style={styles.timeInputLabel}>Open Time</Text>
-                            <TextInput
-                              style={styles.timeInputBox}
-                              value={wh.openTime || '09:00'}
-                              onChangeText={(t) => handleUpdateTime(idx, 'openTime', t)}
-                              placeholder="09:00"
-                              placeholderTextColor={Colors.light.ink400}
-                            />
+                            <TouchableOpacity
+                              style={styles.timePickerTrigger}
+                              onPress={() => setPickingScheduleTime({ dayIndex: idx, field: 'openTime' })}
+                              activeOpacity={0.7}
+                            >
+                              <Icon name="clock" size={12} color={Colors.light.ink600} />
+                              <Text style={styles.timePickerTriggerText}>{wh.openTime || '09:00'}</Text>
+                            </TouchableOpacity>
                           </View>
 
                           <Text style={styles.timeToText}>to</Text>
 
                           <View style={styles.timeInputCol}>
                             <Text style={styles.timeInputLabel}>Close Time</Text>
-                            <TextInput
-                              style={styles.timeInputBox}
-                              value={wh.closeTime || '21:00'}
-                              onChangeText={(t) => handleUpdateTime(idx, 'closeTime', t)}
-                              placeholder="21:00"
-                              placeholderTextColor={Colors.light.ink400}
-                            />
+                            <TouchableOpacity
+                              style={styles.timePickerTrigger}
+                              onPress={() => setPickingScheduleTime({ dayIndex: idx, field: 'closeTime' })}
+                              activeOpacity={0.7}
+                            >
+                              <Icon name="clock" size={12} color={Colors.light.ink600} />
+                              <Text style={styles.timePickerTriggerText}>{wh.closeTime || '21:00'}</Text>
+                            </TouchableOpacity>
                           </View>
                         </View>
                       )}
@@ -345,56 +356,101 @@ export default function ClinicScheduleScreen() {
         onRequestClose={() => setShowAddHolidayModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Practice Holiday</Text>
-              <TouchableOpacity
-                onPress={() => setShowAddHolidayModal(false)}
-                style={styles.closeBtn}
-              >
-                <Icon name="x" size={18} color={Colors.light.ink600} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalForm}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Holiday Date (YYYY-MM-DD) *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={holidayDate}
-                  onChangeText={setHolidayDate}
-                  placeholder="e.g. 2026-10-02"
-                  placeholderTextColor={Colors.light.ink400}
-                />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Practice Holiday</Text>
+                <TouchableOpacity
+                  onPress={() => setShowAddHolidayModal(false)}
+                  style={styles.closeBtn}
+                >
+                  <Icon name="x" size={18} color={Colors.light.ink600} />
+                </TouchableOpacity>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Reason / Festival</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={holidayReason}
-                  onChangeText={setHolidayReason}
-                  placeholder="e.g. Gandhi Jayanti"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
+              <View style={styles.modalForm}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Holiday Date *</Text>
+                  <TouchableOpacity
+                    style={styles.dropdownTrigger}
+                    onPress={() => setShowHolidayDatePicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <Icon name="calendar" size={14} color={Colors.light.primary} />
+                      <Text
+                        style={[
+                          styles.dropdownTriggerText,
+                          !holidayDate && { color: Colors.light.ink400 },
+                        ]}
+                      >
+                        {holidayDate || 'Select Date from Calendar'}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-down" size={14} color={Colors.light.ink400} />
+                  </TouchableOpacity>
+                </View>
 
-              <TouchableOpacity
-                style={styles.submitHolidayBtn}
-                onPress={handleAddHoliday}
-                disabled={addHolidayMutation.isPending}
-                activeOpacity={0.85}
-              >
-                {addHolidayMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitHolidayBtnText}>Confirm Holiday</Text>
-                )}
-              </TouchableOpacity>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Reason / Festival</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={holidayReason}
+                    onChangeText={setHolidayReason}
+                    placeholder="e.g. Gandhi Jayanti"
+                    placeholderTextColor={Colors.light.ink400}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.submitHolidayBtn}
+                  onPress={handleAddHoliday}
+                  disabled={addHolidayMutation.isPending}
+                  activeOpacity={0.85}
+                >
+                  {addHolidayMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitHolidayBtnText}>Confirm Holiday</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Pickers */}
+      <TimePickerModal
+        visible={!!pickingScheduleTime}
+        value={
+          pickingScheduleTime
+            ? (workingHours[pickingScheduleTime.dayIndex]?.[pickingScheduleTime.field] || '09:00')
+            : '09:00'
+        }
+        onSelect={(val: string) => {
+          if (pickingScheduleTime) {
+            handleUpdateTime(pickingScheduleTime.dayIndex, pickingScheduleTime.field, val);
+          }
+          setPickingScheduleTime(null);
+        }}
+        onClose={() => setPickingScheduleTime(null)}
+        title={pickingScheduleTime?.field === 'openTime' ? 'Select Open Time' : 'Select Close Time'}
+      />
+
+      <DatePickerModal
+        visible={showHolidayDatePicker}
+        value={holidayDate}
+        onSelect={(date: string) => {
+          setHolidayDate(date);
+          setShowHolidayDatePicker(false);
+        }}
+        onClose={() => setShowHolidayDatePicker(false)}
+        title="Select Holiday Date"
+      />
     </SafeAreaView>
   );
 }
@@ -514,6 +570,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.light.ink900,
     textAlign: 'center',
+  },
+  timePickerTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: Colors.light.surface300,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 7,
+  },
+  timePickerTriggerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.ink900,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.light.surface50,
+    borderWidth: 1,
+    borderColor: Colors.light.surface200,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 10,
+  },
+  dropdownTriggerText: {
+    fontSize: 13,
+    color: Colors.light.ink900,
+    fontWeight: '500',
   },
   timeToText: {
     fontSize: 11,

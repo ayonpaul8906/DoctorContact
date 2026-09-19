@@ -138,7 +138,7 @@ export default function DoctorSearchScreen() {
           <Text style={styles.headerSubtitle} numberOfLines={1}>
             {isFeaturedOnly
               ? t('section.featuredDoctorsSub', 'Top rated and verified specialists')
-              : 'Book an in-clinic consultation with top specialists'}
+              : t('doctor.findDoctorSub', 'Book an in-clinic consultation with top specialists')}
           </Text>
         </View>
 
@@ -153,8 +153,8 @@ export default function DoctorSearchScreen() {
             style={styles.searchInput}
             placeholder={
               isFeaturedOnly
-                ? 'Filter featured specialists...'
-                : 'Search doctors by name, specialty, or clinic...'
+                ? t('section.featuredDoctorsSub', 'Filter featured specialists...')
+                : t('doctor.searchPrompt', 'Search doctors by name, specialty, or clinic...')
             }
             placeholderTextColor={Colors.light.ink400}
             value={searchQuery}
@@ -181,7 +181,7 @@ export default function DoctorSearchScreen() {
                 filterMode === 'all' && styles.filterChipTextActive,
               ]}
             >
-              All Doctors
+              {t('section.allDoctors', 'All Doctors')}
             </Text>
           </TouchableOpacity>
 
@@ -200,7 +200,7 @@ export default function DoctorSearchScreen() {
                 filterMode === 'live' && styles.filterChipLiveTextActive,
               ]}
             >
-              Live Now
+              {t('doctor.liveNow', 'Live Now')}
             </Text>
           </TouchableOpacity>
 
@@ -219,7 +219,7 @@ export default function DoctorSearchScreen() {
                 filterMode === 'today' && styles.filterChipTodayTextActive,
               ]}
             >
-              Available Today
+              {t('doctor.today', 'Available Today')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -404,7 +404,9 @@ export default function DoctorSearchScreen() {
                     <View style={styles.expBadgeRow}>
                       <View style={styles.expBadgePill}>
                         <Icon name="sparkles" size={11} color={Colors.light.ink600} />
-                        <Text style={styles.expText}>{exp}+ years experience</Text>
+                        <Text style={styles.expText}>
+                          {exp}+ {t('doctor.yrsExp', 'years experience')}
+                        </Text>
                       </View>
                     </View>
                   )}
@@ -426,7 +428,7 @@ export default function DoctorSearchScreen() {
                       {doctor.fee != null && (
                         <Text style={styles.feeInlineText}>
                           ₹{doctor.fee}
-                          <Text style={styles.feeSubText}> / visit</Text>
+                          <Text style={styles.feeSubText}> {t('doctor.perVisit', '/ visit')}</Text>
                         </Text>
                       )}
                     </View>
@@ -438,7 +440,7 @@ export default function DoctorSearchScreen() {
                       <View style={styles.liveStatusPill}>
                         <View style={styles.livePulseDot} />
                         <Icon name="radio" size={11} color="#DC2626" />
-                        <Text style={styles.liveStatusText}>Live Now</Text>
+                        <Text style={styles.liveStatusText}>{t('doctor.liveNow', 'Live Now')}</Text>
                         {liveStatus?.capacity && (
                           <Text style={styles.capacityText}>
                             ({liveStatus.capacity.booked}/{liveStatus.capacity.max})
@@ -448,12 +450,16 @@ export default function DoctorSearchScreen() {
                     ) : isAvailable ? (
                       <View style={styles.availableStatusPill}>
                         <View style={styles.availableInnerDot} />
-                        <Text style={styles.availableStatusText}>Available now</Text>
+                        <Text style={styles.availableStatusText}>
+                          {t('doctor.available', 'Available now')}
+                        </Text>
                       </View>
                     ) : (
                       <View style={styles.unavailableStatusPill}>
                         <View style={styles.unavailableInnerDot} />
-                        <Text style={styles.unavailableStatusText}>Currently unavailable</Text>
+                        <Text style={styles.unavailableStatusText}>
+                          {t('doctor.unavailable', 'Currently unavailable')}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -465,7 +471,7 @@ export default function DoctorSearchScreen() {
                       onPress={() => handleBookDoctor(doctor)}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.detailsButtonText}>Details</Text>
+                      <Text style={styles.detailsButtonText}>{t('common.details', 'Details')}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -474,7 +480,9 @@ export default function DoctorSearchScreen() {
                       activeOpacity={0.85}
                     >
                       <Icon name="calendar" size={13} color="#FFFFFF" />
-                      <Text style={styles.bookButtonText}>Book Appointment</Text>
+                      <Text style={styles.bookButtonText}>
+                        {t('doctor.bookAppointment', 'Book Appointment')}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>

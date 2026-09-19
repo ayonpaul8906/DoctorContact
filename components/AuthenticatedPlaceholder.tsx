@@ -77,7 +77,7 @@ export function AuthenticatedPlaceholder({
               resizeMode="contain"
             />
             <View>
-              <Text style={styles.brandTitle}>Dewasi Group</Text>
+              <Text style={styles.brandTitle}>Doctor Contact</Text>
               <Text style={styles.brandSubtitle}>Healthcare Management</Text>
             </View>
           </View>

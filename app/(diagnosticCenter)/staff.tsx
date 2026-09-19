@@ -9,6 +9,8 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -231,74 +233,79 @@ export default function DiagnosticStaffScreen() {
         onRequestClose={() => setAddModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Register New Lab Staff</Text>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)}>
-                <Icon name="x" size={20} color="#64748B" />
-              </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Register New Lab Staff</Text>
+                <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+                  <Icon name="x" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBody}>
+                <Text style={styles.inputLabel}>Full Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Tanmoy Roy"
+                  placeholderTextColor="#94A3B8"
+                  value={name}
+                  onChangeText={setName}
+                />
+
+                <Text style={styles.inputLabel}>Email Address (Login ID) *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. tanmoy@lab.com"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+
+                <Text style={styles.inputLabel}>Phone Number</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. +91 98321 00011"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="phone-pad"
+                  value={phone}
+                  onChangeText={setPhone}
+                />
+
+                <Text style={styles.inputLabel}>Temporary Password *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Minimum 6 characters"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    addStaffMutation.isPending && { opacity: 0.7 },
+                  ]}
+                  onPress={handleAddStaff}
+                  disabled={addStaffMutation.isPending}
+                >
+                  {addStaffMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="users" size={16} color="#FFFFFF" />
+                      <Text style={styles.submitBtnText}>Register Staff Member</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>Full Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Tanmoy Roy"
-                placeholderTextColor="#94A3B8"
-                value={name}
-                onChangeText={setName}
-              />
-
-              <Text style={styles.inputLabel}>Email Address (Login ID) *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. tanmoy@lab.com"
-                placeholderTextColor="#94A3B8"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={email}
-                onChangeText={setEmail}
-              />
-
-              <Text style={styles.inputLabel}>Phone Number</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. +91 98321 00011"
-                placeholderTextColor="#94A3B8"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-
-              <Text style={styles.inputLabel}>Temporary Password *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Minimum 6 characters"
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.submitBtn,
-                  addStaffMutation.isPending && { opacity: 0.7 },
-                ]}
-                onPress={handleAddStaff}
-                disabled={addStaffMutation.isPending}
-              >
-                {addStaffMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Icon name="users" size={16} color="#FFFFFF" />
-                    <Text style={styles.submitBtnText}>Register Staff Member</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -312,56 +319,61 @@ export default function DiagnosticStaffScreen() {
         onRequestClose={() => setPwdModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                Change Password for {selectedStaff?.user?.name || selectedStaff?.name}
-              </Text>
-              <TouchableOpacity onPress={() => setPwdModalVisible(false)}>
-                <Icon name="x" size={20} color="#64748B" />
-              </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  Change Password for {selectedStaff?.user?.name || selectedStaff?.name}
+                </Text>
+                <TouchableOpacity onPress={() => setPwdModalVisible(false)}>
+                  <Icon name="x" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.modalBody}>
+                <Text style={styles.inputLabel}>New Password *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Minimum 6 characters"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+
+                <Text style={styles.inputLabel}>Confirm New Password *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Re-enter new password"
+                  placeholderTextColor="#94A3B8"
+                  secureTextEntry
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    styles.submitBtn,
+                    changePasswordMutation.isPending && { opacity: 0.7 },
+                  ]}
+                  onPress={handleChangePassword}
+                  disabled={changePasswordMutation.isPending}
+                >
+                  {changePasswordMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="lock" size={16} color="#FFFFFF" />
+                      <Text style={styles.submitBtnText}>Update Password</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <View style={styles.modalBody}>
-              <Text style={styles.inputLabel}>New Password *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Minimum 6 characters"
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
-
-              <Text style={styles.inputLabel}>Confirm New Password *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Re-enter new password"
-                placeholderTextColor="#94A3B8"
-                secureTextEntry
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.submitBtn,
-                  changePasswordMutation.isPending && { opacity: 0.7 },
-                ]}
-                onPress={handleChangePassword}
-                disabled={changePasswordMutation.isPending}
-              >
-                {changePasswordMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <>
-                    <Icon name="lock" size={16} color="#FFFFFF" />
-                    <Text style={styles.submitBtnText}>Update Password</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

@@ -20,7 +20,7 @@ export const Config = {
     process.env.EXPO_PUBLIC_SOCKET_URL ||
     process.env.NEXT_PUBLIC_SOCKET_URL ||
     getDevSocketUrl(),
-  APP_NAME: 'Dewasi Group',
+  APP_NAME: 'Doctor Contact',
   TOKEN_KEY: 'dewasi_access_token',
   REFRESH_TOKEN_KEY: 'dewasi_refresh_token',
   USER_KEY: 'dewasi_auth_user',

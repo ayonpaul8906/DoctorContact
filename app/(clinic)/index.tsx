@@ -235,7 +235,7 @@ export default function ClinicDashboardScreen() {
                 </Text>
                 <Text style={styles.greetingSubtitle} numberOfLines={1}>
                   {clinic?.clinicName ? `${clinic.clinicName} · ` : ''}
-                  Enterprise Clinical Ecosystem
+                  Clinic Operations & Daily Activity Overview
                 </Text>
               </View>
 
@@ -278,28 +278,28 @@ export default function ClinicDashboardScreen() {
               <View style={styles.kpiRow}>
                 <StatCard
                   variant="blueLight"
-                  label="Today's Visits"
+                  label="Today's Appointments"
                   value={totalAppointments}
-                  subtitle={`${waitingCount} in active queue`}
+                  subtitle={`${waitingCount} waiting in queue`}
                   iconName="calendar"
-                  onPress={() => router.push('/(clinic)/management?tab=appointments')}
+                  onPress={() => router.push('/(clinic)/services?tab=reports')}
                 />
                 <StatCard
                   variant="indigo"
                   label="Active Doctors"
                   value={doctors.length}
-                  subtitle={`${activeDoctorsCount} practicing`}
+                  subtitle={`${activeDoctorsCount} active & available`}
                   iconName="stethoscope"
-                  onPress={() => router.push('/(clinic)/overview?tab=doctors')}
+                  onPress={() => router.push('/(clinic)/management?tab=queue')}
                 />
               </View>
 
               <View style={styles.kpiRow}>
                 <StatCard
                   variant="purple"
-                  label="Front Desk"
+                  label="Reception Staff"
                   value={receptionists.length}
-                  subtitle={`${activeReceptionistsCount} on duty`}
+                  subtitle={`${activeReceptionistsCount} front desk`}
                   iconName="users"
                   onPress={() => router.push('/(clinic)/overview?tab=receptionists')}
                 />
@@ -309,7 +309,6 @@ export default function ClinicDashboardScreen() {
                   value={totalPatients}
                   subtitle={`+${newPatients} new today`}
                   iconName="user-check"
-                  onPress={() => router.push('/(clinic)/services?tab=reports')}
                 />
               </View>
             </View>
@@ -324,16 +323,16 @@ export default function ClinicDashboardScreen() {
                   <View>
                     <Text style={styles.sectionCardTitle}>Today's Appointments</Text>
                     <Text style={styles.sectionCardSubtitle}>
-                      Live Token & Patient Queue Overview
+                      Queue Overview
                     </Text>
                   </View>
 
                   <TouchableOpacity
                     style={styles.viewAllBtn}
-                    onPress={() => router.push('/(clinic)/management?tab=queue')}
+                    onPress={() => router.push('/(clinic)/management?tab=requests')}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.viewAllBtnText}>Live Queue</Text>
+                    <Text style={styles.viewAllBtnText}>View All</Text>
                     <Icon name="arrow-right" size={13} color={Colors.light.primary} />
                   </TouchableOpacity>
                 </View>
@@ -411,7 +410,7 @@ export default function ClinicDashboardScreen() {
                               Dr. {item.doctorName}
                             </Text>
                             <Text style={styles.queueItemTokenMeta}>
-                              Token #{item.currentToken || 0} of {item.lastTokenIssued || 0} issued
+                              Token #{item.currentToken || 0} of {item.lastTokenIssued || 0}
                             </Text>
                           </View>
                         </View>
@@ -437,7 +436,7 @@ export default function ClinicDashboardScreen() {
                   <View>
                     <Text style={styles.sectionCardTitle}>Appointment Overview</Text>
                     <Text style={styles.sectionCardSubtitle}>
-                      Distribution breakdown of visits today
+                      Status breakdown of appointments today
                     </Text>
                   </View>
 
@@ -446,7 +445,7 @@ export default function ClinicDashboardScreen() {
                     onPress={() => router.push('/(clinic)/services?tab=reports')}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.viewAllBtnText}>Analytics</Text>
+                    <Text style={styles.viewAllBtnText}>View Reports</Text>
                     <Icon name="arrow-right" size={13} color={Colors.light.primary} />
                   </TouchableOpacity>
                 </View>
@@ -455,7 +454,10 @@ export default function ClinicDashboardScreen() {
                   <View style={styles.emptyDistBox}>
                     <Icon name="pie-chart" size={24} color={Colors.light.ink400} />
                     <Text style={styles.emptyQueueText}>
-                      No appointment volume data recorded for today.
+                      No appointment data today
+                    </Text>
+                    <Text style={styles.emptyDistSub}>
+                      Appointments scheduled today will appear here automatically.
                     </Text>
                   </View>
                 ) : (
@@ -504,7 +506,7 @@ export default function ClinicDashboardScreen() {
                           <Text style={styles.distLabel}>Completed</Text>
                           <Text style={styles.distValue}>
                             {completedCount}{' '}
-                            <Text style={styles.distPct}>({completedPct.toFixed(0)}%)</Text>
+                            <Text style={styles.distPct}>({completedPct.toFixed(1)}%)</Text>
                           </Text>
                         </View>
                       </View>
@@ -512,10 +514,10 @@ export default function ClinicDashboardScreen() {
                       <View style={styles.distLegendItem}>
                         <View style={[styles.distDot, { backgroundColor: '#2563EB' }]} />
                         <View style={styles.distTextGroup}>
-                          <Text style={styles.distLabel}>In Queue</Text>
+                          <Text style={styles.distLabel}>Upcoming</Text>
                           <Text style={styles.distValue}>
                             {upcomingCount}{' '}
-                            <Text style={styles.distPct}>({upcomingPct.toFixed(0)}%)</Text>
+                            <Text style={styles.distPct}>({upcomingPct.toFixed(1)}%)</Text>
                           </Text>
                         </View>
                       </View>
@@ -526,7 +528,7 @@ export default function ClinicDashboardScreen() {
                           <Text style={styles.distLabel}>Pending</Text>
                           <Text style={styles.distValue}>
                             {pendingRequests.length}{' '}
-                            <Text style={styles.distPct}>({pendingPct.toFixed(0)}%)</Text>
+                            <Text style={styles.distPct}>({pendingPct.toFixed(1)}%)</Text>
                           </Text>
                         </View>
                       </View>
@@ -537,7 +539,7 @@ export default function ClinicDashboardScreen() {
                           <Text style={styles.distLabel}>Cancelled</Text>
                           <Text style={styles.distValue}>
                             {cancelledCount}{' '}
-                            <Text style={styles.distPct}>({cancelledPct.toFixed(0)}%)</Text>
+                            <Text style={styles.distPct}>({cancelledPct.toFixed(1)}%)</Text>
                           </Text>
                         </View>
                       </View>
@@ -554,78 +556,85 @@ export default function ClinicDashboardScreen() {
               <View style={styles.sectionPadding}>
                 <View style={styles.sectionHeaderRow}>
                   <View>
-                    <Text style={styles.sectionCardTitle}>Practice Management</Text>
+                    <Text style={styles.sectionCardTitle}>Quick Actions</Text>
                     <Text style={styles.sectionCardSubtitle}>
-                      Direct shortcuts across clinical modules
+                      Direct management shortcuts
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.shortcutsList}>
                   <ShortcutItem
-                    title="Doctor Requests"
-                    subtitle="Incoming & sent physician affiliations"
+                    title="View Requests"
+                    subtitle="Doctor association requests awaiting approval"
                     iconName="inbox"
                     iconBg="#EFF6FF"
                     iconColor="#2563EB"
-                    badge={pendingRequests.length > 0 ? `${pendingRequests.length} Pending` : undefined}
+                    badge={pendingRequests.length > 0 ? 'Requests' : undefined}
                     onPress={() => router.push('/(clinic)/management?tab=requests')}
                   />
                   <ShortcutItem
-                    title="Doctors Directory"
-                    subtitle="Manage doctor schedules & fees"
+                    title="Add Doctor"
+                    subtitle="Add new physician and initial schedule"
                     iconName="stethoscope"
                     iconBg="#FAF5FF"
                     iconColor="#7C3AED"
-                    onPress={() => router.push('/(clinic)/overview?tab=doctors')}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(clinic)/overview',
+                        params: { tab: 'doctors', action: 'add' },
+                      })
+                    }
                   />
                   <ShortcutItem
-                    title="Front Desk Receptionists"
-                    subtitle="Manage staff accounts & assign doctors"
+                    title="Add Receptionist"
+                    subtitle="Register front desk staff account"
                     iconName="users"
                     iconBg="#F0FDF4"
                     iconColor="#16A34A"
-                    onPress={() => router.push('/(clinic)/overview?tab=receptionists')}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(clinic)/overview',
+                        params: { tab: 'receptionists', action: 'add' },
+                      })
+                    }
                   />
                   <ShortcutItem
-                    title="Patient Follow-ups"
-                    subtitle="Track and schedule upcoming visits"
-                    iconName="calendar-clock"
-                    iconBg="#FEF3C7"
-                    iconColor="#D97706"
-                    onPress={() => router.push('/(clinic)/management?tab=followups')}
-                  />
-                  <ShortcutItem
-                    title="Diagnostic Referrals"
-                    subtitle="Order lab tests for patients"
+                    title="Create Referral"
+                    subtitle="Order diagnostic lab test for patients"
                     iconName="flask"
                     iconBg="#FFF1F2"
                     iconColor="#E11D48"
-                    onPress={() => router.push('/(clinic)/services?tab=referrals')}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(clinic)/services',
+                        params: { tab: 'referrals', action: 'create' },
+                      })
+                    }
                   />
                   <ShortcutItem
-                    title="Operating Schedule"
-                    subtitle="Clinic working hours & holidays"
+                    title="Manage Schedule"
+                    subtitle="Weekly operating hours & holidays"
                     iconName="calendar-days"
                     iconBg="#FFFBEB"
                     iconColor="#D97706"
                     onPress={() => router.push('/(clinic)/management?tab=schedule')}
                   />
                   <ShortcutItem
-                    title="Performance & Reports"
-                    subtitle="Revenue analytics & period breakdown"
-                    iconName="trending-up"
+                    title="View Reports"
+                    subtitle="Doctor & clinic revenue and volume reports"
+                    iconName="bar-chart-2"
                     iconBg="#ECFDF5"
                     iconColor="#059669"
                     onPress={() => router.push('/(clinic)/services?tab=reports')}
                   />
                   <ShortcutItem
-                    title="Clinic Settings & Profile"
-                    subtitle="Center location, contact & photo"
+                    title="Analytics Snapshot"
+                    subtitle="Clinic activity and performance overview"
                     iconName="building"
                     iconBg="#EFF6FF"
                     iconColor="#1B3A8C"
-                    onPress={() => router.push('/(clinic)/profile')}
+                    onPress={() => router.push('/(clinic)')}
                   />
                 </View>
               </View>
@@ -638,9 +647,9 @@ export default function ClinicDashboardScreen() {
               <View style={styles.sectionPadding}>
                 <View style={styles.sectionHeaderRow}>
                   <View>
-                    <Text style={styles.sectionCardTitle}>Operational Hours</Text>
+                    <Text style={styles.sectionCardTitle}>Operating Hours</Text>
                     <Text style={styles.sectionCardSubtitle}>
-                      Current center status & upcoming calendar
+                      Today's Status & Next Holiday
                     </Text>
                   </View>
 
@@ -658,7 +667,7 @@ export default function ClinicDashboardScreen() {
                   {/* Today status */}
                   <View style={styles.scheduleBox}>
                     <View style={styles.scheduleBoxTop}>
-                      <Text style={styles.scheduleBoxTitle}>Today ({todayDayName})</Text>
+                      <Text style={styles.scheduleBoxTitle}>Today's Status</Text>
                       <View
                         style={[
                           styles.openClosedBadge,
@@ -686,23 +695,23 @@ export default function ClinicDashboardScreen() {
 
                     <Text style={styles.scheduleTimeText}>
                       {todaySchedule && !todaySchedule.isClosed
-                        ? `${todaySchedule.openTime || '09:00'} - ${todaySchedule.closeTime || '21:00'}`
+                        ? `Hours: ${todaySchedule.openTime || '09:00'} - ${todaySchedule.closeTime || '18:00'}`
                         : 'Practice closed today'}
                     </Text>
                   </View>
 
                   {/* Next holiday */}
                   <View style={styles.scheduleBox}>
-                    <Text style={styles.scheduleBoxTitle}>Next Scheduled Holiday</Text>
+                    <Text style={styles.scheduleBoxTitle}>Next Holiday</Text>
                     {nextHoliday ? (
                       <View style={styles.holidayInfoRow}>
                         <Text style={styles.holidayDateText}>{nextHoliday.date}</Text>
                         <Text style={styles.holidayReasonText} numberOfLines={1}>
-                          {nextHoliday.reason || 'Practice Closure'}
+                          {nextHoliday.reason || 'Closure'}
                         </Text>
                       </View>
                     ) : (
-                      <Text style={styles.noHolidayText}>No upcoming holidays registered</Text>
+                      <Text style={styles.noHolidayText}>No upcoming holidays scheduled.</Text>
                     )}
                   </View>
                 </View>
@@ -716,14 +725,14 @@ export default function ClinicDashboardScreen() {
               <View style={styles.sectionPadding}>
                 <View style={styles.alertHeaderRow}>
                   <Icon name="alert-circle" size={18} color="#D97706" />
-                  <Text style={styles.alertHeaderTitle}>Action Center</Text>
+                  <Text style={styles.alertHeaderTitle}>Pending Actions & Alerts</Text>
                 </View>
 
                 {pendingRequests.length === 0 && referrals.length === 0 ? (
                   <View style={styles.allDoneRow}>
                     <Icon name="check-circle" size={16} color="#059669" />
                     <Text style={styles.allDoneText}>
-                      All clinic operational tasks are up to date.
+                      No pending actions or critical alerts requiring attention.
                     </Text>
                   </View>
                 ) : (
@@ -732,10 +741,10 @@ export default function ClinicDashboardScreen() {
                       <View style={styles.alertCardAmber}>
                         <View style={styles.alertCardLeft}>
                           <Text style={styles.alertCardAmberTitle}>
-                            {pendingRequests.length} Pending Doctor Affiliations
+                            {pendingRequests.length} Pending Requests
                           </Text>
                           <Text style={styles.alertCardAmberSub}>
-                            Physicians requesting association with your clinic
+                            Doctor association requests awaiting approval
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -743,7 +752,7 @@ export default function ClinicDashboardScreen() {
                           onPress={() => router.push('/(clinic)/management?tab=requests')}
                           activeOpacity={0.85}
                         >
-                          <Text style={styles.alertAmberBtnText}>Review</Text>
+                          <Text style={styles.alertAmberBtnText}>View Requests</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -752,10 +761,10 @@ export default function ClinicDashboardScreen() {
                       <View style={styles.alertCardBlue}>
                         <View style={styles.alertCardLeft}>
                           <Text style={styles.alertCardBlueTitle}>
-                            {referrals.length} Sent Diagnostic Requisitions
+                            {referrals.length} Sent Referrals
                           </Text>
                           <Text style={styles.alertCardBlueSub}>
-                            Patient lab test referrals awaiting fulfillment
+                            Referrals sent to diagnostic centers & labs
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -763,7 +772,7 @@ export default function ClinicDashboardScreen() {
                           onPress={() => router.push('/(clinic)/services?tab=referrals')}
                           activeOpacity={0.85}
                         >
-                          <Text style={styles.alertBlueBtnText}>View</Text>
+                          <Text style={styles.alertBlueBtnText}>View Referrals</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -1172,6 +1181,11 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     alignItems: 'center',
     gap: 6,
+  },
+  emptyDistSub: {
+    fontSize: 11,
+    color: Colors.light.ink400,
+    textAlign: 'center',
   },
   distributionContainer: {
     gap: Spacing.three,

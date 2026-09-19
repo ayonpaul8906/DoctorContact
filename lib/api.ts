@@ -60,9 +60,18 @@ api.interceptors.response.use(
         });
 
         const newAccessToken = data?.data?.accessToken;
+        const newRefreshToken = data?.data?.refreshToken;
+        const refreshedUser = data?.data?.user;
+
         if (newAccessToken) {
           setAccessToken(newAccessToken);
           await TokenStorage.setAccessToken(newAccessToken);
+          if (newRefreshToken) {
+            await TokenStorage.setRefreshToken(newRefreshToken);
+          }
+          if (refreshedUser) {
+            await TokenStorage.setStoredUser(refreshedUser);
+          }
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           }

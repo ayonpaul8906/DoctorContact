@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -345,77 +347,82 @@ export default function ClinicReceptionistsScreen() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Front Desk Receptionist</Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.closeBtn}>
-                <Icon name="x" size={18} color={Colors.light.ink600} />
-              </TouchableOpacity>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Front Desk Receptionist</Text>
+                <TouchableOpacity onPress={() => setShowAddModal(false)} style={styles.closeBtn}>
+                  <Icon name="x" size={18} color={Colors.light.ink600} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formContainer}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Staff Full Name *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={addName}
+                    onChangeText={setAddName}
+                    placeholder="e.g. Priya Sharma"
+                    placeholderTextColor={Colors.light.ink400}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Email Address *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={addEmail}
+                    onChangeText={setAddEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    placeholder="priya@clinic.com"
+                    placeholderTextColor={Colors.light.ink400}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Temporary Password *</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={addPassword}
+                    onChangeText={setAddPassword}
+                    secureTextEntry
+                    placeholder="Minimum 6 characters"
+                    placeholderTextColor={Colors.light.ink400}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Phone Number</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={addPhone}
+                    onChangeText={setAddPhone}
+                    keyboardType="phone-pad"
+                    placeholder="+91 98765 43210"
+                    placeholderTextColor={Colors.light.ink400}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.submitBtn}
+                  onPress={handleAddReceptionist}
+                  disabled={addReceptionistMutation.isPending}
+                  activeOpacity={0.85}
+                >
+                  {addReceptionistMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>Create Staff Account</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-
-            <View style={styles.formContainer}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Staff Full Name *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={addName}
-                  onChangeText={setAddName}
-                  placeholder="e.g. Priya Sharma"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Email Address *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={addEmail}
-                  onChangeText={setAddEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  placeholder="priya@clinic.com"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Temporary Password *</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={addPassword}
-                  onChangeText={setAddPassword}
-                  secureTextEntry
-                  placeholder="Minimum 6 characters"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Phone Number</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={addPhone}
-                  onChangeText={setAddPhone}
-                  keyboardType="phone-pad"
-                  placeholder="+91 98765 43210"
-                  placeholderTextColor={Colors.light.ink400}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.submitBtn}
-                onPress={handleAddReceptionist}
-                disabled={addReceptionistMutation.isPending}
-                activeOpacity={0.85}
-              >
-                {addReceptionistMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitBtnText}>Create Staff Account</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 

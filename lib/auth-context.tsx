@@ -30,20 +30,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(storedToken);
         setUserState(storedUser);
 
-        // Optionally verify session validity against backend
+        // Verify session validity against backend in background
         try {
           const res = await api.get('/auth/me');
           if (res?.data?.data?.user) {
             setUserState(res.data.data.user);
             await TokenStorage.setStoredUser(res.data.data.user);
           }
-        } catch {
-          // If offline or network error, retain cached user for offline-first resilience
+        } catch (meError: any) {
+          // If refresh failed and tokens were cleared by interceptor, update state
+          const activeToken = await TokenStorage.getAccessToken();
+          if (!activeToken) {
+            setAccessToken(null);
+            setUserState(null);
+          }
+          // Otherwise keep cached user for offline/transient resilience
         }
       }
-    } catch {
-      setAccessToken(null);
-      setUserState(null);
+    } catch (err) {
+      console.warn('[auth-context] restoreSession error:', err);
     } finally {
       setLoading(false);
     }

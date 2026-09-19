@@ -22,6 +22,7 @@ export type IconName =
   | 'message-circle'
   | 'sparkles'
   | 'log-out'
+  | 'log-in'
   | 'check-circle'
   | 'user'
   | 'home'
@@ -58,6 +59,7 @@ export type IconName =
   | 'file-text'
   | 'calendar-days'
   | 'calendar-clock'
+  | 'bar-chart-2'
   | 'plus'
   | 'bell'
   | 'trash-2'
@@ -84,7 +86,9 @@ export type IconName =
   | 'user-plus'
   | 'info'
   | 'rotate-ccw'
-  | 'arrow-up-right';
+  | 'arrow-up-right'
+  | 'edit'
+  | 'menu';
 
 interface IconProps {
   name: IconName;
@@ -130,6 +134,8 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
       return <Ionicon name="sparkles-outline" size={size} color={color} />;
     case 'log-out':
       return <FeatherIcon name="log-out" size={size} color={color} />;
+    case 'log-in':
+      return <FeatherIcon name="log-in" size={size} color={color} />;
     case 'check-circle':
       return <FeatherIcon name="check-circle" size={size} color={color} />;
     case 'user':
@@ -202,6 +208,8 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
       return <FeatherIcon name="calendar" size={size} color={color} />;
     case 'calendar-clock':
       return <MaterialCommunityIcon name="calendar-clock" size={size} color={color} />;
+    case 'bar-chart-2':
+      return <FeatherIcon name="bar-chart-2" size={size} color={color} />;
     case 'plus':
       return <FeatherIcon name="plus" size={size} color={color} />;
     case 'bell':
@@ -256,6 +264,10 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
       return <FeatherIcon name="rotate-ccw" size={size} color={color} />;
     case 'arrow-up-right':
       return <FeatherIcon name="arrow-up-right" size={size} color={color} />;
+    case 'edit':
+      return <FeatherIcon name="edit-2" size={size} color={color} />;
+    case 'menu':
+      return <FeatherIcon name="menu" size={size} color={color} />;
     default:
       return <FeatherIcon name="help-circle" size={size} color={color} />;
   }

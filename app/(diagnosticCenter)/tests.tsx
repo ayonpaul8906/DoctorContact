@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Switch,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -323,15 +325,23 @@ export default function CenterTestsScreen() {
         onRequestClose={() => setAddModalOpen(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Test to Center</Text>
-              <TouchableOpacity onPress={() => setAddModalOpen(false)}>
-                <Icon name="x" size={20} color="#64748B" />
-              </TouchableOpacity>
-            </View>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Test to Center</Text>
+                <TouchableOpacity onPress={() => setAddModalOpen(false)}>
+                  <Icon name="x" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
 
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.modalScroll}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
               {availableGlobalTests.length === 0 ? (
                 <View style={styles.noGlobalTestsBox}>
                   <Text style={styles.noGlobalTestsText}>
@@ -415,7 +425,8 @@ export default function CenterTestsScreen() {
                 </>
               )}
             </ScrollView>
-          </View>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -429,8 +440,12 @@ export default function CenterTestsScreen() {
         onRequestClose={() => setEditModalOpen(false)}
       >
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 Edit {selectedTest?.diagnosticTest?.name}
               </Text>
@@ -479,8 +494,9 @@ export default function CenterTestsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </KeyboardAvoidingView>
+      </View>
+    </Modal>
     </SafeAreaView>
   );
 }
