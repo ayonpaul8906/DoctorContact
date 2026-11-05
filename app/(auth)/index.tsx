@@ -25,7 +25,7 @@ import { useLanguage } from '../../lib/language-context';
 import { getDashboardRouteForRole } from '../../lib/auth-utils';
 import type { Role, AuthUser } from '../../types';
 
-const CLINIC_PHONE = '+919777777777';
+const CLINIC_PHONE = '+91 86170 63697';
 const CLINIC_WHATSAPP = '919777777777';
 
 export default function LoginScreen() {

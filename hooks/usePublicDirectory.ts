@@ -10,6 +10,8 @@ export interface PublicDoctor extends Doctor {
   image?: string | null;
   imageKey?: string;
   isAvailable?: boolean;
+  medicalSystem?: string | null;
+  specializations?: any[];
 }
 
 export interface PublicClinic extends Clinic {
@@ -20,6 +22,9 @@ export interface PublicClinic extends Clinic {
   image?: string | null;
   imageKey?: string;
   isAvailable?: boolean;
+  whatsapp?: string;
+  googleMapsUrl?: string;
+  mapUrl?: string;
 }
 
 function unwrapDoctors(res: { data?: unknown }): PublicDoctor[] {
@@ -235,6 +240,7 @@ export const FALLBACK_ALL_DOCTORS: PublicDoctor[] = [
   {
     id: 'all-doc-6',
     specialization: 'Homeopathy',
+    medicalSystem: 'HOMEOPATHY',
     qualification: 'BHMS, MD (Homeopathy)',
     experience: 15,
     fee: 350,
@@ -252,6 +258,52 @@ export const FALLBACK_ALL_DOCTORS: PublicDoctor[] = [
       clinicName: 'Nature Care Clinic',
       city: 'Dubrajpur',
       address: 'Post Office Lane',
+    },
+  },
+  {
+    id: 'all-doc-7',
+    specialization: 'Ayurveda Specialist',
+    medicalSystem: 'AYURVEDA',
+    qualification: 'BAMS, MD (Ayurveda), Panchakarma',
+    experience: 12,
+    fee: 400,
+    clinicId: 'clinic-1',
+    rating: 4.9,
+    reviewCount: 178,
+    imageKey: 'hero',
+    user: {
+      name: 'Dr. Debabrata Roy',
+      email: 'dr.debabrata@doctorcontact.com',
+      phone: '+919876543226',
+    },
+    clinic: {
+      id: 'clinic-1',
+      clinicName: 'AyurVeda Wellness Chamber',
+      city: 'Dubrajpur',
+      address: 'Station Road, Near Bus Stand',
+    },
+  },
+  {
+    id: 'all-doc-8',
+    specialization: 'Ayurvedic Physician',
+    medicalSystem: 'AYURVEDA',
+    qualification: 'BAMS (Ayurvedic Medicine)',
+    experience: 8,
+    fee: 350,
+    clinicId: 'clinic-2',
+    rating: 4.8,
+    reviewCount: 112,
+    imageKey: 'doc1',
+    user: {
+      name: 'Dr. Priya Sharma',
+      email: 'dr.priya@doctorcontact.com',
+      phone: '+919876543227',
+    },
+    clinic: {
+      id: 'clinic-2',
+      clinicName: 'Shree Ram Polyclinic',
+      city: 'Suri',
+      address: 'Rabindra Pally Main Road',
     },
   },
 ];
@@ -453,11 +505,14 @@ export interface PublicDiagnosticCenter {
   address?: string;
   city?: string;
   phone?: string;
+  whatsapp?: string;
+  googleMapsUrl?: string;
   email?: string;
   licenseNumber?: string;
   hasHomeService?: boolean;
   rating?: number;
   reviewCount?: number;
+  logo?: string | null;
   image?: string | null;
   testsCount?: number;
   centerTests?: {

@@ -15,6 +15,10 @@ import {
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
 } from '../../hooks/useDoctor';
+import {
+  dismissSystemNotification,
+  dismissAllSystemNotifications,
+} from '../../lib/notifications';
 import { useAppointmentRealtime } from '../../hooks/useAppointmentRealtime';
 import type { AppNotification } from '../../types';
 import {
@@ -40,15 +44,24 @@ export default function DoctorNotificationsScreen() {
   const markReadMutation = useMarkNotificationRead();
   const markAllReadMutation = useMarkAllNotificationsRead();
 
+  // Automatically mark notifications as read when viewed so the dashboard badge clears
+  React.useEffect(() => {
+    if (unreadCount > 0 && !markAllReadMutation.isPending) {
+      markAllReadMutation.mutate();
+    }
+  }, [unreadCount, markAllReadMutation]);
+
   const handleMarkAllRead = async () => {
     try {
       await markAllReadMutation.mutateAsync();
+      await dismissAllSystemNotifications();
     } catch {
       // safe fallback
     }
   };
 
   const handleItemPress = (item: AppNotification) => {
+    dismissSystemNotification(item.id);
     if (!item.isRead) {
       markReadMutation.mutate(item.id);
     }
@@ -151,7 +164,7 @@ export default function DoctorNotificationsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => { refetch(); }}
               tintColor={Colors.light.primary}
               colors={[Colors.light.primary]}
             />

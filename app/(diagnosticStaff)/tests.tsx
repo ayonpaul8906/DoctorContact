@@ -194,7 +194,7 @@ export default function DiagnosticStaffTestsScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={isRefetching}
-          onRefresh={refetch}
+          onRefresh={() => { refetch(); }}
           ListHeaderComponent={
             <Text style={styles.countText}>
               {filteredList.length} test order{filteredList.length !== 1 ? 's' : ''} in queue

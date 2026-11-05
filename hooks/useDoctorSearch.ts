@@ -5,8 +5,8 @@ import { api } from '../lib/api';
 export interface BookAppointmentPayload {
   doctorId: string;
   clinicId: string;
-  scheduleId?: string;
-  date: string; // ISO string with date & time
+  scheduleId: string;
+  date: string; // YYYY-MM-DD (matches backend bookOnlineAppointmentSchema)
 }
 
 export function useDoctorSearch(
@@ -44,6 +44,34 @@ export function useDoctorSearch(
       }
     },
     staleTime: 60000,
+  });
+}
+
+// Fetch upcoming available dates (calculated on the backend based on doctor recurrence, leaves, & holidays)
+export interface AvailableDateEntry {
+  date: string; // YYYY-MM-DD
+  sessions?: any[];
+}
+
+export function useDoctorAvailableDates(
+  doctorId: string | undefined,
+  clinicId: string | undefined
+) {
+  return useQuery<AvailableDateEntry[]>({
+    queryKey: ['doctors', doctorId, 'clinics', clinicId, 'available-dates'],
+    enabled: Boolean(doctorId && clinicId),
+    queryFn: async () => {
+      try {
+        const res = await api.get(
+          `/doctors/${doctorId}/clinics/${clinicId}/schedules/available-dates`,
+          { params: { limit: 14 } }
+        );
+        return res.data?.data?.dates ?? [];
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 30000,
   });
 }
 

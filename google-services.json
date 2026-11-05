@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "519057071542",
+    "project_id": "doctor-contact-eb7b0",
+    "storage_bucket": "doctor-contact-eb7b0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:519057071542:android:cd4b8d354233dc76e8f517",
+        "android_client_info": {
+          "package_name": "com.doctorcontact.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAM2XdDE7VJDwQ7haukh-5_dzMbRSYQtRU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

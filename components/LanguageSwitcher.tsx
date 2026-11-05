@@ -68,11 +68,11 @@ export function LanguageSwitcher({
         activeOpacity={0.75}
         accessibilityLabel="Change Language"
       >
-        <Icon name="globe" size={13} color={Colors.light.primary} />
-        <Text style={styles.pillText}>
-          {currentLocale.nativeName}
+        <Icon name="globe" size={compact ? 12 : 13} color={Colors.light.primary} />
+        <Text style={[styles.pillText, compact && styles.pillTextCompact]}>
+          {compact ? currentLocale.code.toUpperCase() : currentLocale.nativeName}
         </Text>
-        <Icon name="chevron-down" size={11} color={Colors.light.ink500} />
+        <Icon name="chevron-down" size={compact ? 9 : 11} color={Colors.light.ink500} />
       </TouchableOpacity>
 
       {/* Language Selection Modal */}
@@ -115,33 +115,6 @@ export function LanguageSwitcher({
               </TouchableOpacity>
             </View>
 
-            {/* Segmented Quick Switcher (Exact Web Design) */}
-            <View style={styles.segmentedContainer}>
-              {locales.map((l) => {
-                const isActive = language === l.code;
-                return (
-                  <TouchableOpacity
-                    key={l.code}
-                    onPress={() => handleSelect(l.code)}
-                    activeOpacity={0.8}
-                    style={[
-                      styles.segmentButton,
-                      isActive && styles.segmentButtonActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentButtonText,
-                        isActive && styles.segmentButtonTextActive,
-                      ]}
-                    >
-                      {l.nativeName}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
             {/* Detailed Language List */}
             <View style={styles.languageList}>
               {locales.map((l) => {
@@ -157,7 +130,6 @@ export function LanguageSwitcher({
                     activeOpacity={0.8}
                   >
                     <View style={styles.languageRowLeft}>
-                      <Text style={styles.flagEmoji}>{l.flag}</Text>
                       <View>
                         <Text
                           style={[
@@ -212,6 +184,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.light.ink900,
+  },
+  pillTextCompact: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.light.primary,
+    letterSpacing: 0.5,
   },
 
   // Modal Styles
@@ -322,9 +300,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-  },
-  flagEmoji: {
-    fontSize: 22,
   },
   languageNativeText: {
     fontSize: 14,

@@ -68,7 +68,7 @@ export default function ReceptionistDashboardScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isFetching && !isLoading}
-            onRefresh={refetch}
+            onRefresh={() => { refetch(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />

@@ -4,7 +4,7 @@
     "slug": "doctor-contact",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo-icon.png",
+    "icon": "./assets/icon.png",
     "scheme": "doctorcontact",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -16,17 +16,26 @@
       }
     },
     "android": {
+      "versionCode": 6,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo-icon.png",
-        "backgroundColor": "#1B3A8C"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.doctorcontact.app",
+      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ]
+    },
+    "androidNavigationBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#FFFFFF"
     },
     "web": {
       "bundler": "metro",
@@ -39,23 +48,46 @@
       "expo-font",
       "expo-status-bar",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon.png",
+          "color": "#0D9488",
+          "defaultChannel": "default",
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
-          "backgroundColor": "#1B3A8C",
-          "image": "./assets/logo-icon.png",
-          "imageWidth": 160
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/icon.png",
+          "imageWidth": 140
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": false,
+            "extraProguardRules": "-dontwarn expo.modules.core.interfaces.services.KeepAwakeManager\n-dontwarn expo.modules.kotlin.types.AnyTypeProvider\n-dontwarn expo.modules.kotlin.types.LazyKType\n-dontwarn expo.modules.**"
+          }
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
+    "owner": "ayon8906",
     "extra": {
-      "router": {},
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
       "eas": {
-        "projectId": "7a73a188-7286-4fb8-985b-0d92bef5889e"
+        "projectId": "ac3a6bae-2b59-4be8-81f6-daa440860e27"
       }
-    },
-    "owner": "ampl"
+    }
   }
 }

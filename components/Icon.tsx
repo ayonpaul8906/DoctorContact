@@ -41,6 +41,8 @@ export type IconName =
   | 'refresh-cw'
   | 'star'
   | 'dollar-sign'
+  | 'rupee'
+  | 'currency-inr'
   | 'search'
   | 'filter'
   | 'x'
@@ -88,6 +90,7 @@ export type IconName =
   | 'rotate-ccw'
   | 'arrow-up-right'
   | 'edit'
+  | 'ambulance'
   | 'menu';
 
 interface IconProps {
@@ -171,7 +174,9 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
     case 'star':
       return <FeatherIcon name="star" size={size} color={color} />;
     case 'dollar-sign':
-      return <FeatherIcon name="dollar-sign" size={size} color={color} />;
+    case 'rupee':
+    case 'currency-inr':
+      return <MaterialCommunityIcon name="currency-inr" size={size} color={color} />;
     case 'search':
       return <FeatherIcon name="search" size={size} color={color} />;
     case 'filter':
@@ -223,7 +228,7 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
     case 'headphones':
       return <FeatherIcon name="headphones" size={size} color={color} />;
     case 'megaphone':
-      return <Ionicons name="megaphone-outline" size={size} color={color} />;
+      return <Ionicons name="megaphone-outline" size={size} color={color as any} />;
     case 'settings':
       return <FeatherIcon name="settings" size={size} color={color} />;
     case 'radio':
@@ -266,6 +271,8 @@ export function Icon({ name, size = 20, color = '#111827' }: IconProps) {
       return <FeatherIcon name="arrow-up-right" size={size} color={color} />;
     case 'edit':
       return <FeatherIcon name="edit-2" size={size} color={color} />;
+    case 'ambulance':
+      return <MaterialCommunityIcon name="ambulance" size={size} color={color} />;
     case 'menu':
       return <FeatherIcon name="menu" size={size} color={color} />;
     default:

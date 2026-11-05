@@ -168,7 +168,7 @@ export default function ReceptionistAppointmentsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isFetching && !isLoading}
-            onRefresh={refetch}
+            onRefresh={() => { refetch(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />

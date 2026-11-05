@@ -21,7 +21,7 @@ export async function getSocket(): Promise<Socket> {
     });
 
     socket.on('disconnect', (reason) => {
-      if (__DEV__) {
+      if (__DEV__ && reason !== 'io client disconnect') {
         console.log('[Socket] Disconnected:', reason);
       }
     });

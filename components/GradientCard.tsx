@@ -90,7 +90,7 @@ export function GradientCard({
           shadowColor: preset.shadow,
         },
         style,
-      ]}
+      ] as any}
     >
       <View style={[styles.innerContainer, contentStyle]}>{children}</View>
     </LinearGradient>

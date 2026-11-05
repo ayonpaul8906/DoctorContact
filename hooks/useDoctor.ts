@@ -747,6 +747,7 @@ export function useMarkNotificationRead() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['doctor', 'notifications'] });
     },
   });
 }
@@ -759,6 +760,7 @@ export function useMarkAllNotificationsRead() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['doctor', 'notifications'] });
     },
   });
 }

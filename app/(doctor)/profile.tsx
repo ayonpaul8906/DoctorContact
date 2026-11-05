@@ -247,7 +247,7 @@ export default function DoctorProfileScreen() {
                   ) : (
                     <LinearGradient
                       colors={['#1e3a8a', '#3b82f6']}
-                      style={styles.initialsGradientFallback}
+                      style={styles.initialsGradientFallback as any}
                     >
                       <Text style={styles.initialsText}>{getInitials(user?.name)}</Text>
                     </LinearGradient>

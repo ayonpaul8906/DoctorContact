@@ -43,3 +43,9 @@ export * from './DatePickerModal';
 export * from './KeyboardAwareScrollView';
 export * from './NavDrawerModal';
 export * from './ProfileMenuModal';
+export * from './CancelAppointmentModal';
+export * from './NotificationModal';
+export * from './AnnouncementsModal';
+export * from './DoctorChamberModal';
+export * from './NotificationManager';
+

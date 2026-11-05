@@ -78,7 +78,7 @@ export default function DoctorDashboardScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => { refetch(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />
@@ -413,23 +413,27 @@ const styles = StyleSheet.create({
   },
   headerActionsGroup: {
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 8,
   },
   notifBtn: {
-    position: 'relative',
-    padding: 6,
+    width: 36,
+    height: 36,
     borderRadius: Radius.md,
-    backgroundColor: Colors.light.surfaceWhite,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Colors.light.surface200,
+    borderColor: '#DBEAFE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    ...Shadows.sm,
   },
   notifBadge: {
     position: 'absolute',
-    top: -3,
-    right: -3,
+    top: -4,
+    right: -4,
     backgroundColor: Colors.light.danger,
     borderRadius: Radius.full,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
     paddingVertical: 1,
     minWidth: 16,
     alignItems: 'center',
@@ -445,7 +449,7 @@ const styles = StyleSheet.create({
     gap: 4,
     backgroundColor: '#ECFDF5',
     paddingVertical: 3,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: '#A7F3D0',

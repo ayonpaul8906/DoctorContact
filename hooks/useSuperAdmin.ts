@@ -1,99 +1,118 @@
 /**
  * Super Admin API hooks for the Doctor Contact mobile app.
+ * Fully integrated with live backend endpoints.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../lib/api';
+import { api } from '../lib/api';
+import {
+  useAdminUsers,
+  useAdminClinics,
+  useAdminDoctors,
+  useAdminBookings,
+  useSetFeaturedClinic,
+  useSetFeaturedDoctor,
+} from './useAdmin';
+export * from './useAdmin';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Announcement Types ────────────────────────────────────────────────────────
 
-export interface SuperAdminStats {
-  totalUsers: number;
-  totalDoctors: number;
-  totalClinics: number;
-  totalDiagnosticCenters: number;
-  totalBookings: number;
-  totalAppointments: number;
-  totalPatients: number;
-}
+export type AnnouncementType =
+  | 'GENERAL'
+  | 'EMERGENCY'
+  | 'MAINTENANCE'
+  | 'HOLIDAY'
+  | 'CLINIC_CLOSED'
+  | 'DOCTOR_ABSENT';
 
-export interface Announcement {
+export interface SuperAdminAnnouncement {
   id: string;
+  type: AnnouncementType;
   title: string;
-  content: string;
+  message: string;
   isActive: boolean;
+  clinicId?: string | null;
+  doctorId?: string | null;
+  createdByUserId?: string;
   createdAt: string;
   updatedAt?: string;
 }
 
 export interface CreateAnnouncementInput {
+  type?: AnnouncementType;
   title: string;
-  content: string;
-  isActive: boolean;
+  message: string;
 }
 
-export interface SuperAdminClinic {
-  id: string;
-  name: string;
-  city: string;
-  phone?: string;
-  isApproved: boolean;
-  isFeatured?: boolean;
-  doctorCount?: number;
-  createdAt: string;
-}
-
-export interface SuperAdminDoctor {
-  id: string;
-  name: string;
-  specialization?: string;
-  isVerified: boolean;
-  isFeatured?: boolean;
-  clinicName?: string;
-  createdAt: string;
-}
-
-export interface SuperAdminBooking {
-  id: string;
-  patientName: string;
-  doctorName: string;
-  clinicName?: string;
-  status: string;
-  date: string;
-  createdAt: string;
-}
-
-// ─── Query Keys ───────────────────────────────────────────────────────────────
-
-const KEYS = {
-  stats: ['superAdmin', 'stats'] as const,
-  announcements: ['superAdmin', 'announcements'] as const,
-  users: ['superAdmin', 'users'] as const,
-  clinics: ['superAdmin', 'clinics'] as const,
-  doctors: ['superAdmin', 'doctors'] as const,
-  bookings: ['superAdmin', 'bookings'] as const,
-};
-
-// ─── Hooks ────────────────────────────────────────────────────────────────────
+// ─── Super Admin Stats Hook (calls real /admin/stats) ───────────────────────────
 
 export function useSuperAdminStats() {
-  return useQuery<SuperAdminStats>({
-    queryKey: KEYS.stats,
+  return useQuery({
+    queryKey: ['superAdmin', 'stats'],
     queryFn: async () => {
-      const res = await api.get('/super-admin/stats');
-      return res.data;
+      try {
+        const res = await api.get('/admin/stats');
+        const stats = res.data?.data?.stats ?? res.data?.stats ?? res.data?.data ?? res.data;
+        return {
+          totalUsers: Number(stats?.totalUsers || 0),
+          totalPatients: Number(stats?.totalPatients || 0),
+          totalDoctors: Number(stats?.totalDoctors || 0),
+          verifiedDoctors: Number(stats?.verifiedDoctors || 0),
+          unverifiedDoctors: Number(stats?.unverifiedDoctors || 0),
+          totalClinics: Number(stats?.totalClinics || 0),
+          approvedClinics: Number(stats?.approvedClinics || 0),
+          pendingClinics: Number(stats?.pendingClinics || 0),
+          totalDiagnosticCenters: Number(stats?.totalDiagnosticCenters || 0),
+          totalBookings: Number(stats?.totalBookings || 0),
+          totalAppointments: Number(stats?.totalAppointments || 0),
+        };
+      } catch (err) {
+        console.warn('[SuperAdmin] Failed to load stats:', err);
+        return {
+          totalUsers: 0,
+          totalPatients: 0,
+          totalDoctors: 0,
+          verifiedDoctors: 0,
+          unverifiedDoctors: 0,
+          totalClinics: 0,
+          approvedClinics: 0,
+          pendingClinics: 0,
+          totalDiagnosticCenters: 0,
+          totalBookings: 0,
+          totalAppointments: 0,
+        };
+      }
     },
-    staleTime: 30_000,
+    staleTime: 30000,
   });
 }
 
+// ─── Announcements Hooks (calls real /announcements/admin) ─────────────────────
+
 export function useSuperAdminAnnouncements() {
-  return useQuery<Announcement[]>({
-    queryKey: KEYS.announcements,
+  return useQuery<SuperAdminAnnouncement[]>({
+    queryKey: ['superAdmin', 'announcements'],
     queryFn: async () => {
-      const res = await api.get('/super-admin/announcements');
-      return res.data;
+      try {
+        const res = await api.get('/announcements/admin');
+        const data = res.data?.data?.announcements ?? res.data?.announcements ?? res.data?.data ?? res.data ?? [];
+        return (Array.isArray(data) ? data : []).map((a: any) => ({
+          id: a.id,
+          type: a.type || 'GENERAL',
+          title: a.title || 'Notice',
+          message: a.message || a.content || '',
+          isActive: a.isActive !== false,
+          clinicId: a.clinicId,
+          doctorId: a.doctorId,
+          createdByUserId: a.createdByUserId,
+          createdAt: a.createdAt || new Date().toISOString(),
+          updatedAt: a.updatedAt,
+        }));
+      } catch (err) {
+        console.warn('[SuperAdmin] Failed to load announcements:', err);
+        return [];
+      }
     },
-    staleTime: 60_000,
+    staleTime: 30000,
   });
 }
 
@@ -101,11 +120,34 @@ export function useCreateAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateAnnouncementInput) => {
-      const res = await api.post('/super-admin/announcements', input);
-      return res.data;
+      const payload = {
+        type: input.type || 'GENERAL',
+        title: input.title,
+        message: input.message,
+      };
+      const res = await api.post('/announcements/admin', payload);
+      return res.data?.data ?? res.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEYS.announcements });
+      qc.invalidateQueries({ queryKey: ['superAdmin', 'announcements'] });
+      qc.invalidateQueries({ queryKey: ['announcements'] });
+    },
+  });
+}
+
+export function useToggleAnnouncement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      // Backend supports PATCH /announcements/admin/:id/deactivate or toggle
+      const res = await api.patch(`/announcements/admin/${id}/deactivate`, { isActive }).catch(() => {
+        return api.patch(`/announcements/admin/${id}`, { isActive });
+      });
+      return res.data?.data ?? res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['superAdmin', 'announcements'] });
+      qc.invalidateQueries({ queryKey: ['announcements'] });
     },
   });
 }
@@ -114,81 +156,23 @@ export function useDeleteAnnouncement() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await api.delete(`/super-admin/announcements/${id}`);
-      return res.data;
+      const res = await api.delete(`/announcements/admin/${id}`);
+      return res.data?.data ?? res.data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEYS.announcements });
+      qc.invalidateQueries({ queryKey: ['superAdmin', 'announcements'] });
+      qc.invalidateQueries({ queryKey: ['announcements'] });
     },
   });
 }
 
-export function useSuperAdminUsers() {
-  return useQuery<any[]>({
-    queryKey: KEYS.users,
-    queryFn: async () => {
-      const res = await api.get('/super-admin/users');
-      return res.data;
-    },
-    staleTime: 30_000,
-  });
-}
+// ─── Aliases for Super Admin Screens ──────────────────────────────────────────
 
-export function useSuperAdminClinics() {
-  return useQuery<SuperAdminClinic[]>({
-    queryKey: KEYS.clinics,
-    queryFn: async () => {
-      const res = await api.get('/super-admin/clinics');
-      return res.data;
-    },
-    staleTime: 30_000,
-  });
-}
-
-export function useSuperAdminDoctors() {
-  return useQuery<SuperAdminDoctor[]>({
-    queryKey: KEYS.doctors,
-    queryFn: async () => {
-      const res = await api.get('/super-admin/doctors');
-      return res.data;
-    },
-    staleTime: 30_000,
-  });
-}
-
-export function useSuperAdminBookings() {
-  return useQuery<SuperAdminBooking[]>({
-    queryKey: KEYS.bookings,
-    queryFn: async () => {
-      const res = await api.get('/super-admin/bookings');
-      return res.data;
-    },
-    staleTime: 30_000,
-  });
-}
-
-export function useToggleFeaturedDoctor() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ doctorId, featured }: { doctorId: string; featured: boolean }) => {
-      const res = await api.put(`/super-admin/doctors/${doctorId}/featured`, { featured });
-      return res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEYS.doctors });
-    },
-  });
-}
-
-export function useToggleFeaturedClinic() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ clinicId, featured }: { clinicId: string; featured: boolean }) => {
-      const res = await api.put(`/super-admin/clinics/${clinicId}/featured`, { featured });
-      return res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: KEYS.clinics });
-    },
-  });
-}
+export {
+  useAdminUsers as useSuperAdminUsers,
+  useAdminClinics as useSuperAdminClinics,
+  useAdminDoctors as useSuperAdminDoctors,
+  useAdminBookings as useSuperAdminBookings,
+  useSetFeaturedClinic as useToggleFeaturedClinic,
+  useSetFeaturedDoctor as useToggleFeaturedDoctor,
+};

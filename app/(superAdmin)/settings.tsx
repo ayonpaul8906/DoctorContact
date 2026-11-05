@@ -1,26 +1,62 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Switch,
+  TextInput,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ScreenHeader, Icon } from '../../components';
-import { Colors, Spacing, Radius, Typography } from '../../theme';
+import {
+  usePlatformSettings,
+  useUpdatePlatformSettings,
+} from '../../hooks/useAdmin';
 import { useAuth } from '../../lib/auth-context';
+import { Icon } from '../../components/Icon';
+import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
 
 export default function SuperAdminSettingsScreen() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const { data: settings, isLoading, refetch, isRefetching } = usePlatformSettings();
+  const updateSettingsMutation = useUpdatePlatformSettings();
 
-  const [platformActive, setPlatformActive] = useState(true);
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [allowRegistration, setAllowRegistration] = useState(true);
-  const [smsNotifications, setSmsNotifications] = useState(true);
-  const [emailAlerts, setEmailAlerts] = useState(true);
+  const [bookingWindow, setBookingWindow] = useState<string>('30');
+  const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
+  const [allowRegistration, setAllowRegistration] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (settings?.bookingWindowMinutes !== undefined) {
+      setBookingWindow(String(settings.bookingWindowMinutes));
+    }
+  }, [settings]);
+
+  const handleSaveBookingWindow = async () => {
+    const mins = parseInt(bookingWindow, 10);
+    if (isNaN(mins) || mins < 5 || mins > 1440) {
+      Alert.alert('Validation Error', 'Please enter a valid booking window between 5 and 1440 minutes.');
+      return;
+    }
+
+    try {
+      await updateSettingsMutation.mutateAsync({
+        bookingWindowMinutes: mins,
+      });
+      Alert.alert('Success', 'Platform booking window updated successfully!');
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to update platform settings.');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to log out of Super Admin command center?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log Out', style: 'destructive', onPress: () => logout() },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -28,134 +64,152 @@ export default function SuperAdminSettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <ScreenHeader
-          title="Platform Settings"
-          subtitle="System flags, environment status & feature toggles"
-          badgeText="Super Admin"
-        />
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Platform Settings</Text>
+          <Text style={styles.subtitle}>Super Admin global parameters & gateway policies</Text>
+        </View>
 
-        {/* Section 1: System Health & Maintenance */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>System Status</Text>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={styles.settingTitle}>Live Healthcare Gateway</Text>
-              <Text style={styles.settingDesc}>
-                Accept incoming patient bookings and doctor queue sync
+        {/* Section 1: Appointment & Booking Window (Real Backend API) */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <Icon name="clock" size={18} color="#D97706" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Booking Window Policy</Text>
+              <Text style={styles.cardSubtitle}>
+                Minutes before an appointment slot when online booking closes
               </Text>
             </View>
-            <Switch
-              value={platformActive}
-              onValueChange={setPlatformActive}
-              trackColor={{ false: '#CBD5E1', true: '#FDE68A' }}
-              thumbColor={platformActive ? '#D97706' : '#F1F5F9'}
-            />
           </View>
 
           <View style={styles.divider} />
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={styles.settingTitle}>Maintenance Mode</Text>
-              <Text style={styles.settingDesc}>
-                Temporarily pause new registrations for scheduled maintenance
+          {isLoading ? (
+            <View style={styles.loaderRow}>
+              <ActivityIndicator size="small" color="#D97706" />
+              <Text style={styles.loaderText}>Loading platform settings...</Text>
+            </View>
+          ) : (
+            <View style={styles.settingBlock}>
+              <Text style={styles.label}>Window Cutoff (Minutes)</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={bookingWindow}
+                  onChangeText={setBookingWindow}
+                  placeholder="30"
+                />
+                <TouchableOpacity
+                  style={styles.saveBtn}
+                  onPress={handleSaveBookingWindow}
+                  disabled={updateSettingsMutation.isPending}
+                  activeOpacity={0.8}
+                >
+                  {updateSettingsMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Icon name="check" size={14} color="#FFFFFF" />
+                      <Text style={styles.saveBtnText}>Save</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.helpText}>
+                Example: 30 minutes prevents patients from booking appointments less than half an hour before the session begins.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Section 2: Gateway & Maintenance Toggles */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
+              <Icon name="activity" size={18} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Gateway & System Flags</Text>
+              <Text style={styles.cardSubtitle}>Runtime operational state controls</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.switchTitle}>Maintenance Mode</Text>
+              <Text style={styles.switchDesc}>
+                Temporarily pause new online appointments while platform upgrades run
               </Text>
             </View>
             <Switch
               value={maintenanceMode}
               onValueChange={setMaintenanceMode}
-              trackColor={{ false: '#CBD5E1', true: '#FECACA' }}
-              thumbColor={maintenanceMode ? '#DC2626' : '#F1F5F9'}
+              trackColor={{ false: '#CBD5E1', true: '#FDE68A' }}
+              thumbColor={maintenanceMode ? '#D97706' : '#F1F5F9'}
             />
           </View>
-        </View>
 
-        {/* Section 2: Registration & Users */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Registrations & Verification</Text>
+          <View style={styles.divider} />
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={styles.settingTitle}>Open Public Sign-Up</Text>
-              <Text style={styles.settingDesc}>
-                Allow new patients and clinics to register accounts
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.switchTitle}>Open Patient Self-Registration</Text>
+              <Text style={styles.switchDesc}>
+                Allow new patients to register accounts from the mobile app and web portal
               </Text>
             </View>
             <Switch
               value={allowRegistration}
               onValueChange={setAllowRegistration}
-              trackColor={{ false: '#CBD5E1', true: '#FDE68A' }}
-              thumbColor={allowRegistration ? '#D97706' : '#F1F5F9'}
+              trackColor={{ false: '#CBD5E1', true: '#BBF7D0' }}
+              thumbColor={allowRegistration ? '#16A34A' : '#F1F5F9'}
             />
           </View>
         </View>
 
-        {/* Section 3: Notification Channels */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Alert Pipelines</Text>
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={styles.settingTitle}>SMS Token Dispatch</Text>
-              <Text style={styles.settingDesc}>
-                Send real-time token alerts via Twilio/Fast2SMS
-              </Text>
+        {/* Section 3: Super Admin Account Profile */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: '#F0FDF4' }]}>
+              <Icon name="shield-check" size={18} color="#15803D" />
             </View>
-            <Switch
-              value={smsNotifications}
-              onValueChange={setSmsNotifications}
-              trackColor={{ false: '#CBD5E1', true: '#FDE68A' }}
-              thumbColor={smsNotifications ? '#D97706' : '#F1F5F9'}
-            />
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.settingRow}>
-            <View style={styles.settingTextGroup}>
-              <Text style={styles.settingTitle}>Email Receipts & Digests</Text>
-              <Text style={styles.settingDesc}>
-                Deliver appointment confirmations and invoices
-              </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Active Super Admin Profile</Text>
+              <Text style={styles.cardSubtitle}>Root authorization and credentials</Text>
             </View>
-            <Switch
-              value={emailAlerts}
-              onValueChange={setEmailAlerts}
-              trackColor={{ false: '#CBD5E1', true: '#FDE68A' }}
-              thumbColor={emailAlerts ? '#D97706' : '#F1F5F9'}
-            />
           </View>
-        </View>
 
-        {/* Section 4: System Information */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Deployment Metadata</Text>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>App Version</Text>
-            <Text style={styles.infoValue}>v2.4.0-native</Text>
-          </View>
           <View style={styles.divider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Database Environment</Text>
-            <Text style={styles.infoValue}>Production (PostgreSQL)</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Realtime Gateway</Text>
-            <Text style={styles.infoValue}>Socket.IO Operational</Text>
-          </View>
-        </View>
 
-        {/* Sign Out Button */}
-        <TouchableOpacity
-          style={styles.logoutBtn}
-          onPress={() => logout()}
-          activeOpacity={0.8}
-        >
-          <Icon name="log-out" size={16} color={Colors.light.danger} />
-          <Text style={styles.logoutBtnText}>Sign Out of Super Admin Session</Text>
-        </TouchableOpacity>
+          <View style={styles.profileRow}>
+            <Text style={styles.profileLabel}>Signed In As:</Text>
+            <Text style={styles.profileValue}>{user?.name || 'Super Administrator'}</Text>
+          </View>
+          <View style={styles.profileRow}>
+            <Text style={styles.profileLabel}>Email Address:</Text>
+            <Text style={styles.profileValue}>{user?.email || 'admin@doctorcontact.in'}</Text>
+          </View>
+          <View style={styles.profileRow}>
+            <Text style={styles.profileLabel}>Security Role:</Text>
+            <View style={styles.superPill}>
+              <Text style={styles.superPillText}>SUPER_ADMIN</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <Icon name="log-out" size={16} color="#DC2626" />
+            <Text style={styles.logoutText}>Sign Out of Super Admin</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -164,67 +218,158 @@ export default function SuperAdminSettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#FBFBFC',
+    backgroundColor: '#F8FAFC',
   },
   scrollContent: {
-    padding: Spacing.four,
-    paddingBottom: 80,
-    gap: Spacing.three,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 40,
+    gap: 16,
   },
-  sectionCard: {
+  header: {
+    marginBottom: 4,
+  },
+  title: {
+    fontSize: Typography.fontSizes.xl,
+    fontWeight: Typography.fontWeights.extrabold,
+    color: '#0F172A',
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: Radius.xl,
+    borderRadius: Radius.lg,
+    padding: 16,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    padding: Spacing.three,
-    gap: Spacing.two,
+    borderColor: '#E2E8F0',
+    ...Shadows.sm,
   },
-  sectionHeader: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#D97706',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  settingRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
+    gap: 12,
   },
-  settingTextGroup: {
-    flex: 1,
-    paddingRight: 12,
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  settingTitle: {
-    fontSize: 13,
+  cardTitle: {
+    fontSize: 14,
     fontWeight: '700',
-    color: Colors.light.ink900,
+    color: '#0F172A',
   },
-  settingDesc: {
+  cardSubtitle: {
     fontSize: 11,
-    color: Colors.light.ink500,
-    marginTop: 2,
-    lineHeight: 15,
+    color: '#64748B',
+    marginTop: 1,
   },
   divider: {
     height: 1,
     backgroundColor: '#F1F5F9',
+    marginVertical: 12,
   },
-  infoRow: {
+  loaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  loaderText: {
+    fontSize: 12,
+    color: '#D97706',
+  },
+  settingBlock: {
+    gap: 6,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: Radius.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#D97706',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: Radius.md,
+  },
+  saveBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  helpText: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16,
+    marginTop: 2,
+  },
+  switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
   },
-  infoLabel: {
+  switchTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  switchDesc: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  profileLabel: {
     fontSize: 12,
-    color: Colors.light.ink600,
+    color: '#64748B',
   },
-  infoValue: {
+  profileValue: {
     fontSize: 12,
     fontWeight: '700',
-    color: Colors.light.ink900,
+    color: '#0F172A',
+  },
+  superPill: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.xs,
+  },
+  superPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#DC2626',
   },
   logoutBtn: {
     flexDirection: 'row',
@@ -234,13 +379,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
     borderColor: '#FECACA',
-    borderRadius: Radius.lg,
-    paddingVertical: 14,
-    marginTop: Spacing.two,
+    borderRadius: Radius.md,
+    paddingVertical: 12,
+    marginTop: 16,
   },
-  logoutBtnText: {
+  logoutText: {
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.light.danger,
+    color: '#DC2626',
   },
 });

@@ -147,7 +147,7 @@ export default function DiagnosticStaffScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={isRefetching}
-          onRefresh={refetch}
+          onRefresh={() => { refetch(); }}
           ListHeaderComponent={
             <Text style={styles.countText}>
               {staff.length} team member{staff.length !== 1 ? 's' : ''} active in this center

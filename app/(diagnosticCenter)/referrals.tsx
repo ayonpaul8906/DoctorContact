@@ -189,7 +189,7 @@ export default function DiagnosticCenterReferralsScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshing={isRefetching}
-          onRefresh={refetch}
+          onRefresh={() => { refetch(); }}
           ListEmptyComponent={
             <View style={styles.emptyCard}>
               <View style={styles.emptyIconBox}>

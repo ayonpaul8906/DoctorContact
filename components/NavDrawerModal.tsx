@@ -24,7 +24,7 @@ export interface NavDrawerModalProps {
   onSelectSection?: (section: 'treatments' | 'labs' | 'ambulance') => void;
 }
 
-const CLINIC_PHONE = '+919777777777';
+const CLINIC_PHONE = '+91 86170 63697';
 const CLINIC_WHATSAPP = '919777777777';
 const DRAWER_WIDTH = Math.min(320, Dimensions.get('window').width * 0.82);
 
@@ -93,7 +93,7 @@ export function NavDrawerModal({
       subtitle: t('nav.doctorsSub', 'Find specialists & book appointments'),
       onPress: () => {
         handleCloseWithSlide();
-        router.push('/(patient)/doctors' as any);
+        router.push('/doctors' as any);
       },
     },
     {
@@ -105,7 +105,7 @@ export function NavDrawerModal({
       subtitle: t('nav.clinicsSub', 'Explore healthcare facilities & timings'),
       onPress: () => {
         handleCloseWithSlide();
-        router.push('/(patient)/clinics' as any);
+        router.push('/clinics' as any);
       },
     },
     {
@@ -133,21 +133,21 @@ export function NavDrawerModal({
       subtitle: t('nav.labsSub', 'Pathology, blood tests & imaging'),
       onPress: () => {
         handleCloseWithSlide();
-        router.push('/(patient)/labs' as any);
+        router.push('/labs' as any);
       },
     },
     {
       id: 'ambulance',
-      icon: 'phone',
+      icon: 'ambulance',
       iconBg: '#FEF2F2',
       iconColor: '#DC2626',
       label: t('nav.ambulance', '24×7 Ambulance'),
-      subtitle: t('nav.ambulanceSub', 'Emergency response service'),
+      subtitle: t('nav.ambulanceSub', 'Emergency response & private transport'),
       badge: '24×7 Emergency',
       badgeColor: '#EF4444',
       onPress: () => {
         handleCloseWithSlide();
-        Linking.openURL(`tel:${CLINIC_PHONE}`).catch(() => {});
+        router.push('/ambulances' as any);
       },
     },
     {
@@ -162,7 +162,7 @@ export function NavDrawerModal({
       onPress: () => {
         handleCloseWithSlide();
         router.push({
-          pathname: '/(patient)/doctors',
+          pathname: '/doctors',
           params: { live: 'true' },
         } as any);
       },
@@ -176,7 +176,7 @@ export function NavDrawerModal({
       subtitle: t('nav.availableClinicsSub', 'Open clinics accepting walk-ins'),
       onPress: () => {
         handleCloseWithSlide();
-        router.push('/(patient)/clinics' as any);
+        router.push('/clinics' as any);
       },
     },
     {
@@ -417,12 +417,12 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   logoIcon: {
-    width: 34,
-    height: 34,
+    width: 45,
+    height: 45,
   },
   logoImage: {
-    width: 142,
-    height: 38,
+    width: 160,
+    height: 45,
   },
   closeBtn: {
     padding: 6,

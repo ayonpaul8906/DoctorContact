@@ -1,28 +1,41 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../components/Icon';
 import { AppHeader } from '../../components/AppHeader';
+import { NotificationModal } from '../../components/NotificationModal';
+import { useUnreadNotificationCount } from '../../hooks/useNotifications';
 import { Colors } from '../../theme';
 
 export default function PatientTabsLayout() {
   const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 8);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const { data: unreadCount } = useUnreadNotificationCount();
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: true,
-        header: () => <AppHeader badgeText="Patient" />,
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: true,
+          header: () => (
+            <AppHeader
+              badgeText="Patient"
+              showNotificationButton={true}
+              unreadNotificationCount={unreadCount ?? 0}
+              onNotificationPress={() => setNotificationModalVisible(true)}
+            />
+          ),
         tabBarActiveTintColor: Colors.light.primary,
         tabBarInactiveTintColor: Colors.light.ink500,
         tabBarStyle: {
           backgroundColor: Colors.light.surfaceWhite,
           borderTopColor: Colors.light.border,
           borderTopWidth: 1,
-          height: Platform.OS === 'ios' ? 60 + insets.bottom : 64,
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 8,
-          paddingTop: 8,
+          height: 60 + bottomInset,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -58,35 +71,12 @@ export default function PatientTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="doctors"
+        name="profile"
         options={{
-          href: null,
-          headerShown: false,
-          title: 'Find Doctor',
-        }}
-      />
-      <Tabs.Screen
-        name="clinics"
-        options={{
-          href: null,
-          headerShown: false,
-          title: 'Clinics Directory',
-        }}
-      />
-      <Tabs.Screen
-        name="labs"
-        options={{
-          href: null,
-          headerShown: false,
-          title: 'Labs Directory',
-        }}
-      />
-      <Tabs.Screen
-        name="book"
-        options={{
-          href: null,
-          headerShown: false,
-          title: 'Book Appointment',
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="user" size={size || 22} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -97,15 +87,11 @@ export default function PatientTabsLayout() {
           title: 'Appointment Details',
         }}
       />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="user" size={size || 22} color={color} />
-          ),
-        }}
-      />
     </Tabs>
+    <NotificationModal
+      visible={notificationModalVisible}
+      onClose={() => setNotificationModalVisible(false)}
+    />
+  </>
   );
 }

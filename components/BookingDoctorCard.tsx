@@ -90,7 +90,7 @@ export function BookingDoctorCard({ doctor }: BookingDoctorCardProps) {
 
           {doctor.fee != null ? (
             <View style={styles.feeBadge}>
-              <Text style={styles.feeText}>₹{doctor.fee}</Text>
+              <Text style={styles.feeText}>{'\u20B9'}{doctor.fee}</Text>
             </View>
           ) : null}
         </View>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,11 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useMyAppointments } from '../../../hooks/usePatient';
+import { useMyAppointments, useAppointmentDetails } from '../../../hooks/usePatient';
 import { useAppointmentRealtime } from '../../../hooks/useAppointmentRealtime';
+import { formatDoctorName } from '../../../lib/formatters';
+import { getDoctorSpecialty } from '../../../lib/doctor-specialty';
+import { getSocket } from '../../../lib/socket';
 import {
   GradientCard,
   StatusBadge,
@@ -23,6 +26,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../../theme';
 
 function getInitials(name: string) {
   return name
+    .replace(/^dr\.?\s*/i, '')
     .split(' ')
     .filter(Boolean)
     .map((part) => part[0])
@@ -33,20 +37,65 @@ function getInitials(name: string) {
 
 export default function AppointmentDetailsScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+
+  // Normalize ID parameter across array and string shapes
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const targetId = rawId ? decodeURIComponent(String(rawId)).trim() : '';
 
   // Realtime Socket Listener
   const { isConnected } = useAppointmentRealtime();
 
-  // Appointments Query
+  // 1. My Appointments general list query
   const {
     data: appointments,
-    isLoading,
-    isRefetching,
-    refetch,
+    isLoading: isListLoading,
+    refetch: refetchList,
   } = useMyAppointments();
 
-  const appointment = appointments?.find((a) => a.id === id);
+  // 2. Direct single appointment query (checks cache -> /appointments/me -> /appointments/:id/live)
+  const {
+    data: directAppointment,
+    isLoading: isDirectLoading,
+    isRefetching,
+    refetch: refetchDirect,
+  } = useAppointmentDetails(targetId);
+
+  // Resolved appointment from direct query or list cache
+  const appointment =
+    directAppointment ||
+    appointments?.find(
+      (a) => String(a.id).trim().toLowerCase() === targetId.toLowerCase()
+    ) ||
+    null;
+
+  // Real-time socket room subscription for this specific appointment token & queue updates
+  useEffect(() => {
+    if (!targetId) return;
+    let socketInstance: any = null;
+
+    getSocket()
+      .then((socket) => {
+        socketInstance = socket;
+        socket.emit('joinAppointment', targetId);
+        socket.on('appointmentNotification', () => {
+          refetchDirect();
+          refetchList();
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      if (socketInstance) {
+        socketInstance.emit('leaveAppointment', targetId);
+        socketInstance.off('appointmentNotification');
+      }
+    };
+  }, [targetId, refetchDirect, refetchList]);
+
+  const handleRefresh = async () => {
+    await Promise.all([refetchList(), refetchDirect()]);
+  };
 
   const formattedDate = appointment?.date
     ? new Date(appointment.date).toLocaleDateString(undefined, {
@@ -57,15 +106,29 @@ export default function AppointmentDetailsScreen() {
       })
     : '—';
 
-  const formattedTime = appointment?.date
-    ? new Date(appointment.date).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '—';
+  const sessionSchedule =
+    (appointment as any)?.session || (appointment?.queue as any)?.schedule || null;
 
-  const doctorName = appointment?.doctor?.user?.name || 'Healthcare Professional';
-  const clinicName = appointment?.clinic?.clinicName || 'Dewasi Healthcare Clinic';
+  const sessionTime =
+    sessionSchedule?.startTime && sessionSchedule?.endTime
+      ? `${sessionSchedule.startTime} – ${sessionSchedule.endTime}`
+      : sessionSchedule?.startTime
+      ? `${sessionSchedule.startTime}`
+      : appointment?.date
+      ? new Date(appointment.date).toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Consultation Hours';
+
+  const doctorName = formatDoctorName(
+    appointment?.doctor?.user?.name || (appointment as any)?.doctorName || 'Doctor'
+  );
+  const docSpecialty = getDoctorSpecialty(appointment?.doctor);
+  const clinicName =
+    appointment?.clinic?.clinicName || (appointment as any)?.clinicName || 'Clinic Partner';
+
+  const isLoading = (isListLoading || isDirectLoading) && !appointment;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -96,7 +159,7 @@ export default function AppointmentDetailsScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => { handleRefresh(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />
@@ -110,7 +173,7 @@ export default function AppointmentDetailsScreen() {
           </View>
         )}
 
-        {/* Not Found State */}
+        {/* Not Found State (only if both direct query and list query have finished and yielded no record) */}
         {!isLoading && !appointment && (
           <View style={styles.notFoundCard}>
             <Icon name="alert-circle" size={32} color={Colors.light.danger} />
@@ -161,7 +224,7 @@ export default function AppointmentDetailsScreen() {
                       </Text>
                       <Icon name="check-circle" size={14} color={Colors.light.primary} />
                     </View>
-                    <Text style={styles.specialtyText}>Specialist Physician</Text>
+                    <Text style={styles.specialtyText}>{docSpecialty}</Text>
                   </View>
                 </View>
 
@@ -175,7 +238,7 @@ export default function AppointmentDetailsScreen() {
                   <View style={styles.clinicTextGroup}>
                     <Text style={styles.clinicNameText}>{clinicName}</Text>
                     <Text style={styles.clinicAddressText}>
-                      Dewasi Group Healthcare Center
+                      Healthcare Partner Clinic
                     </Text>
                   </View>
                 </View>
@@ -199,9 +262,9 @@ export default function AppointmentDetailsScreen() {
                   </View>
 
                   <View style={styles.scheduleItem}>
-                    <Text style={styles.scheduleLabel}>Time</Text>
+                    <Text style={styles.scheduleLabel}>Visiting Time</Text>
                     <Text style={[styles.scheduleValue, styles.highlightValue]}>
-                      {formattedTime}
+                      {sessionTime}
                     </Text>
                   </View>
 
@@ -217,7 +280,7 @@ export default function AppointmentDetailsScreen() {
                   <View style={styles.scheduleItem}>
                     <Text style={styles.scheduleLabel}>Appointment ID</Text>
                     <Text style={[styles.scheduleValue, styles.codeValue]}>
-                      {appointment.id.slice(0, 8).toUpperCase()}
+                      {(appointment.id || targetId).slice(0, 8).toUpperCase()}
                     </Text>
                   </View>
                 </View>

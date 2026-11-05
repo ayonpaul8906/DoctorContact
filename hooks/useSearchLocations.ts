@@ -10,7 +10,6 @@ export interface SearchLocation {
 }
 
 export const FALLBACK_LOCATIONS: SearchLocation[] = [
-  { id: 'all', nameEn: 'All Cities', isActive: true },
   { id: '1', nameEn: 'Dubrajpur', isActive: true },
   { id: '2', nameEn: 'Suri', isActive: true },
   { id: '3', nameEn: 'Bolpur', isActive: true },
@@ -26,16 +25,11 @@ export function useSearchLocations() {
         const response = await api.get('/locations');
         const raw = response.data?.data || response.data || [];
         if (Array.isArray(raw) && raw.length > 0) {
-          const activeOnly = raw.filter((loc: any) => loc.isActive !== false);
-          const hasAll = activeOnly.some(
-            (l: any) => l.nameEn?.toLowerCase() === 'all cities'
+          const activeOnly = raw.filter(
+            (loc: any) =>
+              loc.isActive !== false &&
+              loc.nameEn?.toLowerCase() !== 'all cities'
           );
-          if (!hasAll) {
-            return [
-              { id: 'all', nameEn: 'All Cities', isActive: true },
-              ...activeOnly,
-            ];
-          }
           return activeOnly;
         }
         return FALLBACK_LOCATIONS;

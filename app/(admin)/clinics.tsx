@@ -1,224 +1,497 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  ScrollView,
+  TextInput,
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAdminClinics, useApproveClinic } from '../../hooks/useAdmin';
-import { ScreenHeader, EmptyState, Icon } from '../../components';
-import { Colors, Spacing, Radius, Typography } from '../../theme';
+import {
+  useAdminClinics,
+  useApproveClinic,
+  useRevokeClinic,
+  useCreateClinic,
+  useSetFeaturedClinic,
+  type AdminClinic,
+  type CreateClinicInput,
+} from '../../hooks/useAdmin';
+import { Icon } from '../../components/Icon';
+import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme';
 
-const STATUS_FILTERS = [
-  { label: 'All', value: 'all' },
-  { label: 'Approved', value: 'approved' },
-  { label: 'Pending', value: 'pending' },
-];
-
-function ClinicCard({ clinic, onApprove, isApproving }: {
-  clinic: any;
-  onApprove: () => void;
-  isApproving: boolean;
-}) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.clinicAvatar}>
-          <Text style={styles.clinicAvatarText}>
-            {clinic.name?.charAt(0)?.toUpperCase() ?? 'C'}
-          </Text>
-        </View>
-        <View style={styles.clinicInfo}>
-          <Text style={styles.clinicName} numberOfLines={1}>{clinic.name}</Text>
-          <View style={styles.cityRow}>
-            <Icon name="map-pin" size={12} color={Colors.light.ink500} />
-            <Text style={styles.clinicCity}>{clinic.city || 'Unknown City'}</Text>
-          </View>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            clinic.isApproved ? styles.statusApproved : styles.statusPending,
-          ]}
-        >
-          <Text
-            style={[
-              styles.statusText,
-              clinic.isApproved ? styles.statusTextApproved : styles.statusTextPending,
-            ]}
-          >
-            {clinic.isApproved ? 'Approved' : 'Pending'}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.metaRow}>
-        {clinic.phone && (
-          <View style={styles.metaItem}>
-            <Icon name="phone" size={12} color={Colors.light.ink500} />
-            <Text style={styles.metaText}>{clinic.phone}</Text>
-          </View>
-        )}
-        {clinic.doctorCount !== undefined && (
-          <View style={styles.metaItem}>
-            <Icon name="stethoscope" size={12} color={Colors.light.ink500} />
-            <Text style={styles.metaText}>{clinic.doctorCount} doctor{clinic.doctorCount !== 1 ? 's' : ''}</Text>
-          </View>
-        )}
-      </View>
-
-      {!clinic.isApproved && (
-        <TouchableOpacity
-          style={[styles.approveBtn, isApproving && styles.approveBtnDisabled]}
-          onPress={onApprove}
-          activeOpacity={0.8}
-          disabled={isApproving}
-        >
-          {isApproving ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <>
-              <Icon name="check-circle" size={14} color="#FFFFFF" />
-              <Text style={styles.approveBtnText}>Approve Clinic</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
+type FilterTab = 'ALL' | 'APPROVED' | 'PENDING';
 
 export default function AdminClinicsScreen() {
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
+  const [search, setSearch] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
 
-  const { data: clinics, isLoading, isError, refetch, isRefetching } = useAdminClinics();
-  const { mutateAsync: approveClinic } = useApproveClinic();
-
-  const filtered = (clinics ?? []).filter((c) => {
-    if (statusFilter === 'approved') return c.isApproved === true;
-    if (statusFilter === 'pending') return c.isApproved === false;
-    return true;
+  // Form State for Add Clinic Modal
+  const [formData, setFormData] = useState<CreateClinicInput>({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    clinicName: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
   });
 
-  const handleApprove = async (clinicId: string) => {
-    Alert.alert('Approve Clinic', 'Are you sure you want to approve this clinic?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Approve',
-        onPress: async () => {
-          try {
-            setApprovingId(clinicId);
-            await approveClinic(clinicId);
-          } catch {
-            Alert.alert('Error', 'Failed to approve clinic. Please try again.');
-          } finally {
-            setApprovingId(null);
-          }
+  const isApprovedParam =
+    activeTab === 'ALL' ? undefined : activeTab === 'APPROVED';
+
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    isRefetching,
+  } = useAdminClinics({
+    isApproved: isApprovedParam,
+    limit: 100,
+  });
+
+  const approveMutation = useApproveClinic();
+  const revokeMutation = useRevokeClinic();
+  const createMutation = useCreateClinic();
+  const featureMutation = useSetFeaturedClinic();
+
+  const clinics = data?.clinics ?? [];
+
+  // Filter by search query
+  const filteredClinics = useMemo(() => {
+    if (!search.trim()) return clinics;
+    const q = search.toLowerCase().trim();
+    return clinics.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.city && c.city.toLowerCase().includes(q)) ||
+        (c.phone && c.phone.includes(q)) ||
+        (c.address && c.address.toLowerCase().includes(q))
+    );
+  }, [clinics, search]);
+
+  const approvedCount = useMemo(() => clinics.filter((c) => c.isApproved).length, [clinics]);
+  const pendingCount = useMemo(() => clinics.filter((c) => !c.isApproved).length, [clinics]);
+
+  const handleApprove = (clinic: AdminClinic) => {
+    Alert.alert(
+      'Approve Clinic',
+      `Are you sure you want to approve "${clinic.name}" for public bookings?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: async () => {
+            try {
+              await approveMutation.mutateAsync(clinic.id);
+            } catch (err: any) {
+              Alert.alert('Error', err?.response?.data?.message || 'Failed to approve clinic.');
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
+  };
+
+  const handleRevoke = (clinic: AdminClinic) => {
+    Alert.alert(
+      'Revoke Approval',
+      `Revoke booking authorization for "${clinic.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Revoke',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await revokeMutation.mutateAsync(clinic.id);
+            } catch (err: any) {
+              Alert.alert('Error', err?.response?.data?.message || 'Failed to revoke approval.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleToggleFeatured = async (clinic: AdminClinic) => {
+    try {
+      await featureMutation.mutateAsync({
+        clinicId: clinic.id,
+        isFeatured: !clinic.isFeatured,
+      });
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to update featured status.');
+    }
+  };
+
+  const handleCreateSubmit = async () => {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim() || !formData.clinicName.trim()) {
+      Alert.alert('Validation Error', 'Owner Name, Email, Password, and Clinic Name are required.');
+      return;
+    }
+
+    try {
+      await createMutation.mutateAsync(formData);
+      Alert.alert('Success', 'Clinic created and approved successfully!');
+      setShowAddModal(false);
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        phone: '',
+        clinicName: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+      });
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.message || 'Failed to register clinic.');
+    }
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      {/* Header Bar */}
+      <View style={styles.header}>
+        <View style={styles.headerTitleGroup}>
+          <Text style={styles.title}>Clinics Directory</Text>
+          <Text style={styles.subtitle}>Manage healthcare chambers & authorizations</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => setShowAddModal(true)}
+          activeOpacity={0.8}
+        >
+          <Icon name="plus" size={16} color="#FFFFFF" />
+          <Text style={styles.addBtnText}>Add Clinic</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Filter Tabs */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'ALL' && styles.tabItemActive]}
+          onPress={() => setActiveTab('ALL')}
+        >
+          <Text style={[styles.tabText, activeTab === 'ALL' && styles.tabTextActive]}>
+            All ({clinics.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'APPROVED' && styles.tabItemActive]}
+          onPress={() => setActiveTab('APPROVED')}
+        >
+          <Text style={[styles.tabText, activeTab === 'APPROVED' && styles.tabTextActive]}>
+            Approved ({approvedCount})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'PENDING' && styles.tabItemActive]}
+          onPress={() => setActiveTab('PENDING')}
+        >
+          <Text style={[styles.tabText, activeTab === 'PENDING' && styles.tabTextActive]}>
+            Pending ({pendingCount})
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Search Input */}
+      <View style={styles.searchBox}>
+        <Icon name="search" size={16} color={Colors.light.ink400} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search by clinic name, city, phone..."
+          placeholderTextColor={Colors.light.ink400}
+          value={search}
+          onChangeText={setSearch}
+          clearButtonMode="while-editing"
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Icon name="x" size={16} color={Colors.light.ink400} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Clinics List */}
       <FlatList
-        data={filtered}
+        data={filteredClinics}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => { refetch(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />
         }
-        ListHeaderComponent={
-          <>
-            <ScreenHeader
-              title="Clinics Directory"
-              subtitle="Review and approve clinic registrations"
-              badgeText="Admin"
-            />
-
-            {/* Status Filter Pills */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterScroll}
-              contentContainerStyle={styles.filterContent}
-            >
-              {STATUS_FILTERS.map((f) => (
-                <TouchableOpacity
-                  key={f.value}
-                  style={[
-                    styles.filterPill,
-                    statusFilter === f.value && styles.filterPillActive,
-                  ]}
-                  onPress={() => setStatusFilter(f.value)}
-                  activeOpacity={0.75}
-                >
-                  <Text
-                    style={[
-                      styles.filterPillText,
-                      statusFilter === f.value && styles.filterPillTextActive,
-                    ]}
-                  >
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {!isLoading && (
-              <Text style={styles.countText}>
-                {filtered.length} clinic{filtered.length !== 1 ? 's' : ''}
-              </Text>
-            )}
-
-            {isLoading && (
-              <View style={styles.centerState}>
-                <ActivityIndicator size="small" color={Colors.light.primary} />
-                <Text style={styles.stateText}>Loading clinics...</Text>
-              </View>
-            )}
-            {!isLoading && isError && (
-              <View style={styles.errorState}>
-                <Icon name="alert-circle" size={20} color={Colors.light.danger} />
-                <Text style={styles.errorText}>Failed to load clinics</Text>
-                <TouchableOpacity style={styles.retryBtn} onPress={() => refetch()}>
-                  <Text style={styles.retryBtnText}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </>
-        }
         ListEmptyComponent={
-          !isLoading && !isError ? (
-            <EmptyState
-              title="No Clinics Found"
-              description="No clinics match the current filter."
-            />
-          ) : null
+          isLoading ? (
+            <View style={styles.centerBox}>
+              <ActivityIndicator size="small" color={Colors.light.primary} />
+              <Text style={styles.loadingText}>Loading clinics...</Text>
+            </View>
+          ) : (
+            <View style={styles.centerBox}>
+              <Icon name="building" size={36} color={Colors.light.ink300} />
+              <Text style={styles.emptyTitle}>No Clinics Found</Text>
+              <Text style={styles.emptySubtitle}>
+                {search ? 'Try adjusting your search criteria.' : 'No clinics match the current filter.'}
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item }) => (
-          <ClinicCard
-            clinic={item}
-            onApprove={() => handleApprove(item.id)}
-            isApproving={approvingId === item.id}
-          />
+          <View style={styles.card}>
+            {/* Top row */}
+            <View style={styles.cardHeader}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>
+                  {item.name?.charAt(0)?.toUpperCase() || 'C'}
+                </Text>
+              </View>
+
+              <View style={styles.clinicDetails}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.clinicName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  {/* Featured Star Toggle */}
+                  <TouchableOpacity
+                    onPress={() => handleToggleFeatured(item)}
+                    disabled={featureMutation.isPending}
+                    style={styles.starBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Icon
+                      name="star"
+                      size={18}
+                      color={item.isFeatured ? '#EAB308' : '#CBD5E1'}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {item.city ? (
+                  <View style={styles.locationRow}>
+                    <Icon name="map-pin" size={12} color={Colors.light.ink500} />
+                    <Text style={styles.locationText} numberOfLines={1}>
+                      {item.city}{item.state ? `, ${item.state}` : ''}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Status Badge */}
+              <View
+                style={[
+                  styles.statusBadge,
+                  item.isApproved ? styles.statusApproved : styles.statusPending,
+                ]}
+              >
+                <Icon
+                  name={item.isApproved ? 'check-circle' : 'clock'}
+                  size={10}
+                  color={item.isApproved ? '#15803D' : '#B45309'}
+                />
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    item.isApproved ? styles.statusTextApproved : styles.statusTextPending,
+                  ]}
+                >
+                  {item.isApproved ? 'Approved' : 'Pending'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Address & Contacts */}
+            {item.address ? (
+              <Text style={styles.addressText} numberOfLines={2}>
+                {item.address}
+              </Text>
+            ) : null}
+
+            <View style={styles.divider} />
+
+            {/* Bottom Info & Action Buttons */}
+            <View style={styles.cardFooter}>
+              <View style={styles.metaRow}>
+                {item.phone ? (
+                  <View style={styles.metaItem}>
+                    <Icon name="phone" size={12} color={Colors.light.ink500} />
+                    <Text style={styles.metaText}>{item.phone}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.metaItem}>
+                  <Icon name="stethoscope" size={12} color={Colors.light.ink500} />
+                  <Text style={styles.metaText}>{item.doctorCount ?? 0} Doctor{item.doctorCount !== 1 ? 's' : ''}</Text>
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionsRow}>
+                {!item.isApproved ? (
+                  <TouchableOpacity
+                    style={styles.approveBtn}
+                    onPress={() => handleApprove(item)}
+                    disabled={approveMutation.isPending}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="check" size={13} color="#FFFFFF" />
+                    <Text style={styles.approveBtnText}>Approve</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.revokeBtn}
+                    onPress={() => handleRevoke(item)}
+                    disabled={revokeMutation.isPending}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="x-circle" size={13} color="#DC2626" />
+                    <Text style={styles.revokeBtnText}>Revoke</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
         )}
       />
+
+      {/* Add Clinic Modal */}
+      <Modal
+        visible={showAddModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+          >
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Register New Clinic</Text>
+                <Text style={styles.modalSubtitle}>Auto-approved admin onboarding</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowAddModal(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Icon name="x" size={20} color={Colors.light.ink600} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalScroll}>
+              <Text style={styles.inputLabel}>Clinic / Chamber Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Care Poly Clinic"
+                value={formData.clinicName}
+                onChangeText={(v) => setFormData({ ...formData, clinicName: v })}
+              />
+
+              <Text style={styles.inputLabel}>Administrator Full Name *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Dr. Rajesh Sen"
+                value={formData.name}
+                onChangeText={(v) => setFormData({ ...formData, name: v })}
+              />
+
+              <Text style={styles.inputLabel}>Email Address *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="clinic@example.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={formData.email}
+                onChangeText={(v) => setFormData({ ...formData, email: v })}
+              />
+
+              <Text style={styles.inputLabel}>Account Password *</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Minimum 6 characters"
+                secureTextEntry
+                value={formData.password}
+                onChangeText={(v) => setFormData({ ...formData, password: v })}
+              />
+
+              <Text style={styles.inputLabel}>Contact Phone</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. 9876543210"
+                keyboardType="phone-pad"
+                value={formData.phone}
+                onChangeText={(v) => setFormData({ ...formData, phone: v })}
+              />
+
+              <Text style={styles.inputLabel}>Physical Address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Street name, landmark..."
+                value={formData.address}
+                onChangeText={(v) => setFormData({ ...formData, address: v })}
+              />
+
+              <View style={styles.formRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>City</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Kolkata"
+                    value={formData.city}
+                    onChangeText={(v) => setFormData({ ...formData, city: v })}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Pincode</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="700001"
+                    keyboardType="numeric"
+                    value={formData.pincode}
+                    onChangeText={(v) => setFormData({ ...formData, pincode: v })}
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitBtn}
+                onPress={handleCreateSubmit}
+                disabled={createMutation.isPending}
+                activeOpacity={0.8}
+              >
+                {createMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="check" size={16} color="#FFFFFF" />
+                    <Text style={styles.submitBtnText}>Create & Authorize Clinic</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -226,96 +499,155 @@ export default function AdminClinicsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.light.backgroundSoft,
+    backgroundColor: '#F8FAFC',
   },
-  listContent: {
-    padding: Spacing.four,
-    paddingBottom: 80,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  filterScroll: {
-    marginBottom: Spacing.three,
+  headerTitleGroup: {
+    flex: 1,
   },
-  filterContent: {
-    gap: 8,
-    paddingRight: 4,
+  title: {
+    fontSize: Typography.fontSizes.xl,
+    fontWeight: Typography.fontWeights.extrabold,
+    color: '#0F172A',
   },
-  filterPill: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 8,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.light.surface100,
+  subtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
-  filterPillActive: {
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: Colors.light.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    ...Shadows.sm,
   },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.light.ink700,
-  },
-  filterPillTextActive: {
+  addBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
-  countText: {
+  tabBar: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  tabItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  tabItemActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  tabText: {
     fontSize: 12,
-    color: Colors.light.ink500,
-    fontWeight: '500',
-    marginBottom: Spacing.two,
+    fontWeight: '600',
+    color: Colors.light.ink600,
+  },
+  tabTextActive: {
+    color: '#FFFFFF',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    padding: 0,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    gap: 12,
   },
   card: {
-    backgroundColor: Colors.light.surfaceWhite,
+    backgroundColor: '#FFFFFF',
     borderRadius: Radius.lg,
+    padding: 14,
     borderWidth: 1,
-    borderColor: Colors.light.border,
-    padding: Spacing.three,
-    marginBottom: Spacing.two,
-    shadowColor: '#1B3A8C',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-    gap: Spacing.two,
+    borderColor: '#E2E8F0',
+    ...Shadows.sm,
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  clinicAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#7C3AED',
+  avatarCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
   },
-  clinicAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2563EB',
   },
-  clinicInfo: {
+  clinicDetails: {
     flex: 1,
   },
-  clinicName: {
-    fontSize: Typography.fontSizes.sm,
-    fontWeight: '700',
-    color: Colors.light.ink900,
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 6,
   },
-  cityRow: {
+  clinicName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    flex: 1,
+  },
+  starBtn: {
+    padding: 2,
+    marginLeft: 6,
+  },
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginTop: 2,
   },
-  clinicCity: {
-    fontSize: 12,
-    color: Colors.light.ink500,
+  locationText: {
+    fontSize: 11,
+    color: '#64748B',
   },
   statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: Radius.full,
   },
   statusApproved: {
@@ -324,8 +656,8 @@ const styles = StyleSheet.create({
   statusPending: {
     backgroundColor: '#FEF3C7',
   },
-  statusText: {
-    fontSize: 11,
+  statusBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
   },
   statusTextApproved: {
@@ -334,14 +666,26 @@ const styles = StyleSheet.create({
   statusTextPending: {
     color: '#B45309',
   },
+  addressText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 8,
+    lineHeight: 16,
+  },
   divider: {
     height: 1,
-    backgroundColor: Colors.light.surface100,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 10,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   metaRow: {
     flexDirection: 'row',
-    gap: Spacing.three,
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
   },
   metaItem: {
     flexDirection: 'row',
@@ -349,71 +693,129 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.light.ink600,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   approveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: Colors.light.primary,
-    borderRadius: Radius.md,
-    paddingVertical: 10,
-    shadowColor: Colors.light.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  approveBtnDisabled: {
-    opacity: 0.7,
+    gap: 4,
+    backgroundColor: '#059669',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
   },
   approveBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
+    color: '#FFFFFF',
   },
-  centerState: {
+  revokeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  revokeBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  centerBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+    color: Colors.light.ink500,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 8,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  modalCloseBtn: {
+    padding: 6,
+  },
+  modalScroll: {
+    padding: 16,
+    gap: 10,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#0F172A',
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  submitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.light.surfaceWhite,
-    borderRadius: Radius.lg,
-    padding: Spacing.four,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    marginBottom: Spacing.three,
-  },
-  stateText: {
-    fontSize: 13,
-    color: Colors.light.ink500,
-  },
-  errorState: {
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    padding: Spacing.four,
-    gap: 8,
-    marginBottom: Spacing.three,
-  },
-  errorText: {
-    fontSize: 13,
-    color: Colors.light.danger,
-    fontWeight: '600',
-  },
-  retryBtn: {
-    backgroundColor: Colors.light.danger,
+    backgroundColor: Colors.light.primary,
     borderRadius: Radius.md,
-    paddingVertical: 8,
-    paddingHorizontal: Spacing.three,
+    paddingVertical: 12,
+    marginTop: 16,
+    marginBottom: 32,
+    ...Shadows.sm,
   },
-  retryBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  submitBtnText: {
+    fontSize: 14,
     fontWeight: '700',
+    color: '#FFFFFF',
   },
 });

@@ -27,10 +27,22 @@ export function BookingSummary({
       })
     : 'Not selected';
 
-  // Format time (e.g. "10:30" -> "10:30 AM")
+  // Format time (e.g. "10:30" -> "10:30 AM" or "10:00 - 13:00" -> "10:00 AM - 01:00 PM")
   const formattedTime = React.useMemo(() => {
     if (!selectedTime) return 'Not selected';
+    if (selectedTime.includes('-')) {
+      const parts = selectedTime.split('-').map((s) => s.trim());
+      const formatSingle = (t: string) => {
+        const [h, m] = t.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return t;
+        const period = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+      };
+      return `${formatSingle(parts[0])} - ${formatSingle(parts[1])}`;
+    }
     const [hours, minutes] = selectedTime.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return selectedTime;
     const period = hours >= 12 ? 'PM' : 'AM';
     const hour12 = hours % 12 || 12;
     return `${hour12}:${String(minutes).padStart(2, '0')} ${period}`;
@@ -114,11 +126,11 @@ export function BookingSummary({
           {doctor.fee != null ? (
             <View style={styles.detailRow}>
               <View style={styles.labelGroup}>
-                <Icon name="dollar-sign" size={14} color="#059669" />
+                <Icon name="rupee" size={14} color="#059669" />
                 <Text style={styles.labelText}>Consultation Fee</Text>
               </View>
               <Text style={[styles.valueText, styles.feeValue]}>
-                ₹{doctor.fee}
+                {'\u20B9'}{doctor.fee}
               </Text>
             </View>
           ) : null}

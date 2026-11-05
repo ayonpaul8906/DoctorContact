@@ -119,3 +119,19 @@ export const LanguageStorage = {
   },
 };
 
+const NOTIFICATION_SEEN_KEY = 'doctorcontact_last_seen_notification_id';
+
+export const NotificationStorage = {
+  async getLastSeenId(): Promise<string | null> {
+    return await getItem(NOTIFICATION_SEEN_KEY);
+  },
+
+  async setLastSeenId(id: string): Promise<void> {
+    await setItem(NOTIFICATION_SEEN_KEY, id);
+  },
+
+  async clearLastSeenId(): Promise<void> {
+    await deleteItem(NOTIFICATION_SEEN_KEY);
+  },
+};
+

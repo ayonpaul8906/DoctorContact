@@ -170,7 +170,7 @@ export default function ClinicProfileScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={refetch}
+            onRefresh={() => { refetch(); }}
             tintColor={Colors.light.primary}
             colors={[Colors.light.primary]}
           />

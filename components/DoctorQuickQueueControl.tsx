@@ -144,7 +144,7 @@ export function DoctorQuickQueueControl({
               }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.nextGradientFill}
+              style={styles.nextGradientFill as any}
             >
               {nextMutation.isPending ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />

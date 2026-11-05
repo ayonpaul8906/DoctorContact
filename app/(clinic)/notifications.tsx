@@ -16,6 +16,10 @@ import {
   useMarkClinicNotificationRead,
   useMarkAllClinicNotificationsRead,
 } from '../../hooks/useClinic';
+import {
+  dismissSystemNotification,
+  dismissAllSystemNotifications,
+} from '../../lib/notifications';
 import { useAppointmentRealtime } from '../../hooks/useAppointmentRealtime';
 import {
   GradientCard,
@@ -39,9 +43,17 @@ export default function ClinicNotificationsScreen() {
   const markReadMutation = useMarkClinicNotificationRead();
   const markAllReadMutation = useMarkAllClinicNotificationsRead();
 
+  // Automatically mark notifications as read when viewed so the clinic dashboard badge clears
+  React.useEffect(() => {
+    if (unreadCount > 0 && !markAllReadMutation.isPending) {
+      markAllReadMutation.mutate();
+    }
+  }, [unreadCount, markAllReadMutation]);
+
   const handleMarkAllRead = () => {
     if (unreadCount > 0) {
       markAllReadMutation.mutate();
+      dismissAllSystemNotifications();
     }
   };
 
@@ -145,7 +157,7 @@ export default function ClinicNotificationsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => { refetch(); }}
               tintColor={Colors.light.primary}
               colors={[Colors.light.primary]}
             />
@@ -157,6 +169,7 @@ export default function ClinicNotificationsScreen() {
             return (
               <TouchableOpacity
                 onPress={() => {
+                  dismissSystemNotification(item.id);
                   if (isUnread) markReadMutation.mutate(item.id);
                 }}
                 activeOpacity={0.8}

@@ -18,6 +18,9 @@ interface AppHeaderProps {
   badgeText?: string;
   showHomeButton?: boolean;
   onHomePress?: () => void;
+  showNotificationButton?: boolean;
+  unreadNotificationCount?: number;
+  onNotificationPress?: () => void;
   rightElement?: React.ReactNode;
 }
 
@@ -36,6 +39,9 @@ export function AppHeader({
   badgeText,
   showHomeButton = true,
   onHomePress,
+  showNotificationButton = false,
+  unreadNotificationCount = 0,
+  onNotificationPress,
   rightElement,
 }: AppHeaderProps) {
   const router = useRouter();
@@ -66,18 +72,13 @@ export function AppHeader({
       ]}
     >
       <View style={styles.innerRow}>
-        {/* Brand Group (Logo Icon + Brand Logo Text) */}
+        {/* Brand Group (Clean Single Logo) */}
         <TouchableOpacity
           onPress={handleGoHome}
           activeOpacity={0.75}
           style={styles.brandTouchable}
         >
           <View style={styles.brandRow}>
-            <Image
-              source={require('../assets/logo-icon.png')}
-              style={styles.logoIcon}
-              resizeMode="contain"
-            />
             <Image
               source={require('../assets/LOGO.png')}
               style={styles.logoFull}
@@ -86,7 +87,7 @@ export function AppHeader({
           </View>
         </TouchableOpacity>
 
-        {/* Right Section: Language Switcher, Badge & Home Button */}
+        {/* Right Section: Language Switcher, Badge, Notification & Home Button */}
         <View style={styles.rightSection}>
           <LanguageSwitcher compact />
 
@@ -95,6 +96,23 @@ export function AppHeader({
               <Text style={styles.badgeText}>{localizedBadge}</Text>
             </View>
           ) : null}
+
+          {showNotificationButton && (
+            <TouchableOpacity
+              style={styles.notifButton}
+              onPress={onNotificationPress}
+              activeOpacity={0.75}
+            >
+              <Icon name="bell" size={15} color={Colors.light.ink700} />
+              {unreadNotificationCount > 0 ? (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
+                  </Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          )}
 
           {rightElement}
 
@@ -190,5 +208,36 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: Colors.light.primary,
+  },
+  notifButton: {
+    width: 32,
+    height: 32,
+    borderRadius: Radius.full,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    position: 'relative',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    backgroundColor: '#DC2626',
+    borderRadius: Radius.full,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    lineHeight: 11,
   },
 });

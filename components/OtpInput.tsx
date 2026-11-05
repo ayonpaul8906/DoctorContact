@@ -24,7 +24,7 @@ export function OtpInput({
   disabled = false,
   autoFocus = false,
 }: OtpInputProps) {
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<any>(null);
   const [isFocused, setIsFocused] = useState(false);
 
   const digits = value

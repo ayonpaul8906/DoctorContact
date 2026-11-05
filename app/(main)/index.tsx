@@ -28,7 +28,9 @@ import {
   type KeyboardAwareScrollViewRef,
   NavDrawerModal,
   ProfileMenuModal,
+  AnnouncementsModal,
 } from '../../components';
+import { useGlobalAnnouncements } from '../../hooks/useAnnouncements';
 import { useAuth } from '../../lib/auth-context';
 import { useLanguage } from '../../lib/language-context';
 import { getDashboardRouteForRole } from '../../lib/auth-utils';
@@ -45,13 +47,18 @@ import {
   type SearchLocation,
   FALLBACK_LOCATIONS,
 } from '../../hooks/useSearchLocations';
+import { formatDoctorName } from '../../lib/formatters';
+import {
+  getDoctorSpecialty,
+  getDoctorMedicalSystem,
+} from '../../lib/doctor-specialty';
 
 const { width } = Dimensions.get('window');
-const CLINIC_PHONE = '+919777777777';
+const CLINIC_PHONE = '+91 86170 63697';
 const CLINIC_WHATSAPP = '919777777777';
 const SUPPORT_EMAIL = 'support@doctorcontact.com';
 
-const LOCATIONS = ['All Cities', 'Dubrajpur', 'Suri', 'Bolpur', 'Rampurhat', 'Kolkata'];
+const LOCATIONS = ['All Locations', 'Dubrajpur', 'Suri', 'Bolpur', 'Rampurhat', 'Kolkata'];
 const POPULAR_SEARCHES = ['Cardiologist', 'Skin clinic', 'Pediatrician', 'Diabetes', 'Orthopedic'];
 const VOICE_COMMAND_HINTS = [
   'Cardiologist',
@@ -171,10 +178,14 @@ export default function MobileHomeScreen() {
     );
   };
 
-  const scrollRef = useRef<KeyboardAwareScrollViewRef>(null);
+  const scrollRef = useRef<any>(null);
   const treatmentsYRef = useRef<number>(0);
   const [navDrawerVisible, setNavDrawerVisible] = useState(false);
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [announcementsModalVisible, setAnnouncementsModalVisible] = useState(false);
+
+  // Platform Announcements from Backend API
+  const { unreadCount: unreadAnnouncementsCount } = useGlobalAnnouncements();
 
   const handleSelectDrawerSection = (section: 'treatments' | 'labs' | 'ambulance') => {
     if (section === 'treatments' && scrollRef.current) {
@@ -182,11 +193,15 @@ export default function MobileHomeScreen() {
         y: Math.max(0, treatmentsYRef.current - 20),
         animated: true,
       });
+    } else if (section === 'labs') {
+      router.push('/labs' as any);
+    } else if (section === 'ambulance') {
+      router.push('/ambulances' as any);
     }
   };
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('All Cities');
+  const [selectedLocation, setSelectedLocation] = useState('All Locations');
   const [locationModalVisible, setLocationModalVisible] = useState(false);
 
   // Dynamic Locations from Backend API
@@ -215,14 +230,17 @@ export default function MobileHomeScreen() {
   const doctorSpecialties = useMemo(() => {
     const list = allDoctors ?? [];
     const set = new Set<string>();
-    list.forEach((d) => d.specialization && set.add(d.specialization));
+    list.forEach((d) => {
+      const sp = getDoctorSpecialty(d);
+      if (sp && sp !== 'General Specialist') set.add(sp);
+    });
     return ['All', ...Array.from(set)];
   }, [allDoctors]);
 
   const filteredAllDoctors = useMemo(() => {
     const list = allDoctors ?? [];
     if (activeDoctorSpecialty === 'All') return list;
-    return list.filter((d) => d.specialization === activeDoctorSpecialty);
+    return list.filter((d) => getDoctorSpecialty(d) === activeDoctorSpecialty);
   }, [allDoctors, activeDoctorSpecialty]);
 
   // Voice wave pulsing effect
@@ -457,10 +475,10 @@ export default function MobileHomeScreen() {
 
   const runSearch = (queryStr: string, loc: string) => {
     router.push({
-      pathname: '/(patient)/doctors',
+      pathname: '/doctors',
       params: {
         q: queryStr,
-        city: loc === 'All Cities' ? '' : loc,
+        city: loc === 'All Cities' || loc === 'All Locations' ? '' : loc,
       },
     });
   };
@@ -474,7 +492,7 @@ export default function MobileHomeScreen() {
       router.push('/(auth)');
     } else {
       router.push({
-        pathname: '/(patient)/book',
+        pathname: '/book',
         params: {
           doctorId: doc.id,
           doctorName: doc.user?.name || '',
@@ -508,7 +526,6 @@ export default function MobileHomeScreen() {
           style={styles.logoTouchable}
         >
           <View style={styles.brandRow}>
-            <View style={styles.headerLogoIconBox}>
               <Image
                 source={require('../../assets/logo-icon.png')}
                 style={styles.headerLogoIcon}
@@ -516,7 +533,6 @@ export default function MobileHomeScreen() {
                 fadeDuration={0}
                 resizeMethod="resize"
               />
-            </View>
             <Image
               source={require('../../assets/LOGO.png')}
               style={styles.headerLogo}
@@ -528,12 +544,31 @@ export default function MobileHomeScreen() {
         </TouchableOpacity>
 
         <View style={styles.headerRight}>
+          {/* Overall Platform Announcements / Notice Button (Distinct Megaphone Design) */}
+          <TouchableOpacity
+            style={styles.announcementBtn}
+            onPress={() => setAnnouncementsModalVisible(true)}
+            activeOpacity={0.8}
+            accessibilityLabel="Platform Announcements and Notices"
+          >
+            <View style={styles.announcementIconBox}>
+              <Icon name="megaphone" size={17} color="#0D9488" />
+              {unreadAnnouncementsCount > 0 ? (
+                <View style={styles.announcementBadge}>
+                  <Text style={styles.announcementBadgeText}>
+                    {unreadAnnouncementsCount > 9 ? '9+' : unreadAnnouncementsCount}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+
           {/* Live Indicator Badge */}
           <TouchableOpacity
             style={styles.liveBadge}
             onPress={() =>
               router.push({
-                pathname: '/(patient)/doctors',
+                pathname: '/doctors',
                 params: { live: 'true' },
               } as any)
             }
@@ -609,8 +644,8 @@ export default function MobileHomeScreen() {
             >
               <Icon name="map-pin" size={15} color={Colors.light.primaryLight} />
               <Text style={styles.locationText} numberOfLines={1}>
-                {selectedLocation === 'All Cities'
-                  ? t('common.allLocations', 'All Cities')
+                {selectedLocation === 'All Cities' || selectedLocation === 'All Locations'
+                  ? t('common.allLocations', 'All Locations')
                   : selectedLocation}
               </Text>
               <Icon name="chevron-down" size={13} color={Colors.light.ink400} />
@@ -695,7 +730,7 @@ export default function MobileHomeScreen() {
               >
                 <TouchableOpacity
                   style={styles.quickCardInnerDoctor}
-                  onPress={() => router.push('/(patient)/doctors')}
+                  onPress={() => router.push('/doctors')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickImageWrapper}>
@@ -736,7 +771,7 @@ export default function MobileHomeScreen() {
               >
                 <TouchableOpacity
                   style={styles.quickCardInnerClinic}
-                  onPress={() => router.push('/(patient)/clinics')}
+                  onPress={() => router.push('/clinics')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickImageWrapper}>
@@ -780,7 +815,7 @@ export default function MobileHomeScreen() {
               >
                 <TouchableOpacity
                   style={styles.quickCardInnerLab}
-                  onPress={() => router.push('/(patient)/labs')}
+                  onPress={() => router.push('/labs')}
                   activeOpacity={0.85}
                 >
                   <View style={styles.quickImageWrapper}>
@@ -882,7 +917,7 @@ export default function MobileHomeScreen() {
             <TouchableOpacity
               onPress={() =>
                 router.push({
-                  pathname: '/(patient)/doctors',
+                  pathname: '/doctors',
                   params: { filter: 'featured' },
                 })
               }
@@ -906,7 +941,9 @@ export default function MobileHomeScreen() {
               contentContainerStyle={styles.cardsScrollContent}
             >
               {(featuredDoctors ?? []).map((doc) => {
-                const docName = doc.user?.name || 'Dr. Specialist';
+                const docName = formatDoctorName(doc.user?.name || 'Dr. Specialist');
+                const docSpecialty = getDoctorSpecialty(doc);
+                const docSystem = getDoctorMedicalSystem(doc);
                 const avatarUrl = getDoctorAvatarUrl(doc, { faceCrop: true, width: 450, height: 300 });
                 const localPhoto = LOCAL_DOCTOR_PHOTOS[doc.imageKey || ''] || null;
 
@@ -936,7 +973,7 @@ export default function MobileHomeScreen() {
                         ) : (
                           <LinearGradient
                             colors={['#1B3A8C', '#3b82f6']}
-                            style={styles.doctorAvatarFallback}
+                            style={styles.doctorAvatarFallback as any}
                           >
                             <Text style={styles.avatarFallbackText}>
                               {getDoctorInitials(docName)}
@@ -966,8 +1003,47 @@ export default function MobileHomeScreen() {
                           {docName}
                         </Text>
                         <Text style={styles.doctorSpecialty} numberOfLines={1}>
-                          {doc.specialization || 'Consultant Specialist'}
+                          {docSpecialty}
                         </Text>
+
+                        {/* Medical System Badge */}
+                        <View
+                          style={[
+                            styles.homeDocSysBadge,
+                            {
+                              backgroundColor: docSystem.bgColor,
+                              borderColor: docSystem.borderColor,
+                            },
+                          ]}
+                        >
+                          <Icon name={docSystem.icon} size={9} color={docSystem.textColor} />
+                          <Text style={[styles.homeDocSysText, { color: docSystem.textColor }]}>
+                            {docSystem.label}
+                          </Text>
+                        </View>
+
+                        {/* Live Status Pill matching Web */}
+                        {Boolean(doc.liveStatus?.isLive || (doc as any).isLive) ? (
+                          <View style={styles.homeDocLivePill}>
+                            <View style={styles.homeDocLiveDot} />
+                            <Text style={styles.homeDocLiveText}>Live Now</Text>
+                            {doc.liveStatus?.capacity && (
+                              <Text style={styles.homeDocCapacityText}>
+                                ({doc.liveStatus.capacity.booked}/{doc.liveStatus.capacity.max})
+                              </Text>
+                            )}
+                          </View>
+                        ) : Boolean(doc.liveStatus ? doc.liveStatus.isAvailable : (doc.isAvailable ?? true)) ? (
+                          <View style={styles.homeDocAvailPill}>
+                            <View style={styles.homeDocAvailDot} />
+                            <Text style={styles.homeDocAvailText}>Available today</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.homeDocUnavailPill}>
+                            <View style={styles.homeDocUnavailDot} />
+                            <Text style={styles.homeDocUnavailText}>Unavailable today</Text>
+                          </View>
+                        )}
 
                         {doc.clinic?.clinicName ? (
                           <View style={styles.clinicLocRow}>
@@ -984,7 +1060,7 @@ export default function MobileHomeScreen() {
                             <Text style={styles.ratingText}>{doc.rating ?? 4.9}</Text>
                           </View>
 
-                          <Text style={styles.docFee}>₹{doc.fee ?? 500}</Text>
+                          <Text style={styles.docFee}>{'\u20B9'}{doc.fee ?? 500}</Text>
 
                           <TouchableOpacity
                             style={styles.bookMiniBtn}
@@ -1013,7 +1089,7 @@ export default function MobileHomeScreen() {
               </Text>
             </View>
             <TouchableOpacity
-              onPress={() => router.push('/(patient)/doctors')}
+              onPress={() => router.push('/doctors')}
               activeOpacity={0.7}
             >
               <Text style={styles.viewAllText}>{t('common.viewAll', 'View All →')}</Text>
@@ -1065,7 +1141,9 @@ export default function MobileHomeScreen() {
               contentContainerStyle={styles.cardsScrollContent}
             >
               {filteredAllDoctors.map((doc) => {
-                const docName = doc.user?.name || 'Healthcare Professional';
+                const docName = formatDoctorName(doc.user?.name || 'Healthcare Professional');
+                const docSpecialty = getDoctorSpecialty(doc);
+                const docSystem = getDoctorMedicalSystem(doc);
                 const avatarUrl = getDoctorAvatarUrl(doc);
 
                 return (
@@ -1092,7 +1170,7 @@ export default function MobileHomeScreen() {
                         ) : (
                           <LinearGradient
                             colors={['#1B3A8C', '#14B8A6']}
-                            style={styles.squareFallbackGradient}
+                            style={styles.squareFallbackGradient as any}
                           >
                             <Text style={styles.squareFallbackText}>
                               {getDoctorInitials(docName)}
@@ -1108,8 +1186,40 @@ export default function MobileHomeScreen() {
                           {docName}
                         </Text>
                         <Text style={styles.compactDocSpecialty} numberOfLines={1}>
-                          {doc.specialization || 'Specialist'}
+                          {docSpecialty}
                         </Text>
+
+                        {/* Medical System Badge */}
+                        <View
+                          style={[
+                            styles.homeDocSysBadge,
+                            {
+                              backgroundColor: docSystem.bgColor,
+                              borderColor: docSystem.borderColor,
+                              alignSelf: 'flex-start',
+                              marginVertical: 2,
+                            },
+                          ]}
+                        >
+                          <Icon name={docSystem.icon} size={8} color={docSystem.textColor} />
+                          <Text style={[styles.homeDocSysText, { color: docSystem.textColor, fontSize: 9 }]}>
+                            {docSystem.label}
+                          </Text>
+                        </View>
+
+                        {/* Live Status Pill matching Web */}
+                        {Boolean(doc.liveStatus?.isLive || (doc as any).isLive) ? (
+                          <View style={[styles.homeDocLivePill, { alignSelf: 'flex-start', marginVertical: 3 }]}>
+                            <View style={styles.homeDocLiveDot} />
+                            <Text style={styles.homeDocLiveText}>Live Now</Text>
+                          </View>
+                        ) : Boolean(doc.liveStatus ? doc.liveStatus.isAvailable : (doc.isAvailable ?? true)) ? (
+                          <View style={[styles.homeDocAvailPill, { alignSelf: 'flex-start', marginVertical: 3 }]}>
+                            <View style={styles.homeDocAvailDot} />
+                            <Text style={styles.homeDocAvailText}>Available today</Text>
+                          </View>
+                        ) : null}
+
                         <Text style={styles.compactDocClinic} numberOfLines={1}>
                           {doc.clinic?.clinicName || 'Clinic Partner'}
                         </Text>
@@ -1119,7 +1229,7 @@ export default function MobileHomeScreen() {
                             <Icon name="star" size={10} color="#EAB308" />
                             <Text style={styles.ratingTextSm}>{doc.rating ?? 4.8}</Text>
                           </View>
-                          <Text style={styles.compactDocFee}>₹{doc.fee ?? 400}</Text>
+                          <Text style={styles.compactDocFee}>{'\u20B9'}{doc.fee ?? 400}</Text>
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -1249,7 +1359,7 @@ export default function MobileHomeScreen() {
             <TouchableOpacity
               onPress={() =>
                 router.push({
-                  pathname: '/(patient)/clinics',
+                  pathname: '/clinics',
                   params: { filter: 'featured' },
                 })
               }
@@ -1288,8 +1398,8 @@ export default function MobileHomeScreen() {
                       style={styles.clinicCardInner}
                       onPress={() =>
                         router.push({
-                          pathname: '/(patient)/clinics',
-                          params: { filter: 'featured', q: cName },
+                          pathname: '/clinic/[id]' as any,
+                          params: { id: clinic.id },
                         })
                       }
                       activeOpacity={0.85}
@@ -1305,7 +1415,7 @@ export default function MobileHomeScreen() {
                         ) : (
                           <LinearGradient
                             colors={['#14B8A6', '#0D9488']}
-                            style={styles.clinicLogoFallback}
+                            style={styles.clinicLogoFallback as any}
                           >
                             <Icon name="building" size={28} color="#FFFFFF" />
                             <Text style={styles.clinicFallbackText}>
@@ -1376,7 +1486,7 @@ export default function MobileHomeScreen() {
             <TouchableOpacity
               onPress={() =>
                 router.push({
-                  pathname: '/(patient)/clinics',
+                  pathname: '/clinics',
                   params: { filter: 'all' },
                 })
               }
@@ -1415,8 +1525,8 @@ export default function MobileHomeScreen() {
                       style={styles.allClinicCardInner}
                       onPress={() =>
                         router.push({
-                          pathname: '/(patient)/clinics',
-                          params: { q: cName },
+                          pathname: '/clinic/[id]' as any,
+                          params: { id: clinic.id },
                         })
                       }
                       activeOpacity={0.85}
@@ -1430,7 +1540,7 @@ export default function MobileHomeScreen() {
                       ) : (
                         <LinearGradient
                           colors={['#14B8A6', '#0D9488']}
-                          style={styles.allClinicCoverFallback}
+                          style={styles.allClinicCoverFallback as any}
                         >
                           <Icon name="building" size={24} color="#FFFFFF" />
                           <Text style={styles.allClinicFallbackText}>
@@ -1486,7 +1596,7 @@ export default function MobileHomeScreen() {
                 </View>
                 <TouchableOpacity
                   style={styles.labBtn}
-                  onPress={() => router.push('/(patient)/labs')}
+                  onPress={() => router.push('/labs')}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.labBtnText}>{t('common.bookTest', 'Book Lab Test')}</Text>
@@ -1501,7 +1611,11 @@ export default function MobileHomeScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.emergencyGradientBorder}
             >
-              <View style={styles.ambCardInner}>
+              <TouchableOpacity
+                style={styles.ambCardInner}
+                onPress={() => router.push('/ambulances' as any)}
+                activeOpacity={0.85}
+              >
                 <View style={styles.emergencyTopRow}>
                   <Image
                     source={EMERGENCY_LOCAL_IMAGES.ambulance}
@@ -1520,17 +1634,29 @@ export default function MobileHomeScreen() {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={styles.ambBtn}
-                  onPress={handleCall}
-                  activeOpacity={0.8}
-                >
-                  <Icon name="phone" size={14} color="#FFFFFF" />
-                  <Text style={styles.ambBtnText}>
-                    {t('section.callAmbulance', 'Call Ambulance')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  <TouchableOpacity
+                    style={[styles.ambBtn, { flex: 1, backgroundColor: '#252A67' }]}
+                    onPress={() => router.push('/ambulances' as any)}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="ambulance" size={14} color="#FFFFFF" />
+                    <Text style={styles.ambBtnText}>
+                      {t('section.findAmbulance', 'Find Ambulance')}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.ambBtn, { flex: 0.9, backgroundColor: '#DC2626' }]}
+                    onPress={handleCall}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="phone" size={14} color="#FFFFFF" />
+                    <Text style={styles.ambBtnText}>
+                      {t('section.callAmbulance', 'Call 108')}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             </LinearGradient>
           </View>
         </View>
@@ -1601,7 +1727,7 @@ export default function MobileHomeScreen() {
                 {t('footer.forPatients', 'For Patients')}
               </Text>
               <TouchableOpacity
-                onPress={() => router.push('/(patient)/doctors')}
+                onPress={() => router.push('/doctors')}
                 style={styles.footerLink}
               >
                 <Text style={styles.footerLinkText}>
@@ -1609,7 +1735,7 @@ export default function MobileHomeScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push('/(patient)/clinics')}
+                onPress={() => router.push('/clinics')}
                 style={styles.footerLink}
               >
                 <Text style={styles.footerLinkText}>
@@ -1625,7 +1751,7 @@ export default function MobileHomeScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push('/(patient)/labs')}
+                onPress={() => router.push('/labs')}
                 style={styles.footerLink}
               >
                 <Text style={styles.footerLinkText}>
@@ -1686,7 +1812,7 @@ export default function MobileHomeScreen() {
                 activeOpacity={0.8}
               >
                 <Icon name="phone" size={14} color="#FFFFFF" />
-                <Text style={styles.contactBtnText}>+91 97777 77777</Text>
+                <Text style={styles.contactBtnText}>+91 86170 70636</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1883,8 +2009,8 @@ export default function MobileHomeScreen() {
                 const locId = typeof loc === 'string' ? loc : loc.id;
                 const isSelected = selectedLocation === locName;
                 const displayName =
-                  locName === 'All Cities'
-                    ? t('common.allLocations', 'All Cities')
+                  locName === 'All Cities' || locName === 'All Locations'
+                    ? t('common.allLocations', 'All Locations')
                     : locName;
                 return (
                   <TouchableOpacity
@@ -1933,6 +2059,12 @@ export default function MobileHomeScreen() {
       <ProfileMenuModal
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
+      />
+
+      {/* ================= PLATFORM GLOBAL ANNOUNCEMENTS MODAL ================= */}
+      <AnnouncementsModal
+        visible={announcementsModalVisible}
+        onClose={() => setAnnouncementsModalVisible(false)}
       />
     </SafeAreaView>
   );
@@ -1984,17 +2116,56 @@ const styles = StyleSheet.create({
     }),
   },
   headerLogoIcon: {
-    width: 34,
-    height: 34,
+    width: 55,
+    height: 55,
   },
   headerLogo: {
-    width: 145,
-    height: 40,
+    width: 150,
+    height: 50,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  announcementBtn: {
+    position: 'relative',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1.5,
+    borderColor: '#99F6E4',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.sm,
+  },
+  announcementIconBox: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  announcementBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 8.5,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  announcementBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    lineHeight: 11,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -2505,6 +2676,102 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.light.primary,
     marginTop: 2,
+  },
+  homeDocSysBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 1.5,
+    paddingHorizontal: 6,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginTop: 3,
+  },
+  homeDocSysText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  homeDocLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  homeDocLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#EF4444',
+  },
+  homeDocLiveText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  homeDocCapacityText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#DC2626',
+    opacity: 0.8,
+  },
+  homeDocAvailPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#D1FAE5',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  homeDocAvailDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#10B981',
+  },
+  homeDocAvailText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  homeDocUnavailPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  homeDocUnavailDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: Colors.light.ink400,
+  },
+  homeDocUnavailText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: Colors.light.ink500,
   },
   clinicLocRow: {
     flexDirection: 'row',

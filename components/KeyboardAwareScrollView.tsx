@@ -108,7 +108,7 @@ export const KeyboardAwareScrollView = forwardRef<ScrollView, KeyboardAwareScrol
         keyboardVerticalOffset={keyboardVerticalOffset}
       >
         <ScrollView
-          ref={scrollRef}
+          ref={scrollRef as any}
           style={[styles.scrollView, style]}
           contentContainerStyle={[
             contentContainerStyle,

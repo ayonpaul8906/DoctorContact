@@ -67,13 +67,17 @@ export interface Clinic {
 export interface DoctorScheduleSlot {
   id: string;
   clinicId: string;
+  doctorId?: string;
   startTime: string;
   endTime: string;
   maxPatients: number;
-  recurrenceType: 'DAILY' | 'WEEKLY' | 'MONTHLY_DATE' | 'MONTHLY_WEEKDAY' | 'SPECIFIC_DATE';
+  recurrenceType: 'DAILY' | 'WEEKLY' | 'MONTHLY_DATE' | 'MONTHLY_WEEKDAY' | 'SPECIFIC_DATE' | string;
   recurrencePattern?: Record<string, unknown>;
-  isActive: boolean;
+  isActive?: boolean;
   onlineBookingEnabled?: boolean;
+  currentBookings?: number;
+  slotsLeft?: number;
+  displaySlotTimes?: string[];
 }
 
 export interface DoctorLiveStatus {
@@ -88,6 +92,16 @@ export interface DoctorLiveStatus {
 export interface Doctor {
   id: string;
   specialization: string | null;
+  medicalSystem?: 'ALLOPATHY' | 'HOMEOPATHY' | 'AYURVEDA' | string | null;
+  specializations?: Array<{
+    id?: string;
+    specializationId?: string;
+    specialization?: {
+      id: string;
+      name: string;
+      iconUrl?: string | null;
+    };
+  }>;
   qualification: string | null;
   experience: number | null;
   fee: number | null;
@@ -121,8 +135,11 @@ export interface Appointment {
   date: string;
   status: AppointmentStatus;
   queueMode?: 'LIVE' | 'PRIVATE';
+  bucket?: 'UPCOMING' | 'TODAY' | 'HISTORY';
+  isYourTurn?: boolean;
   patientsAhead?: number;
   estimatedWaitMinutes?: number | null;
+  estimatedWaitLabel?: string | null;
   patient?: {
     id?: string;
     name?: string;
@@ -589,5 +606,12 @@ export interface CreateGuestPatientInput {
   age: number;
   phone?: string;
   gender?: Gender;
+}
+
+export interface BookingStatus {
+  activeAppointments: number;
+  maxActiveAppointments: number;
+  canBookMore: boolean;
+  bookingRestrictedUntil: string | null;
 }
 

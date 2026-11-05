@@ -24,7 +24,7 @@ export default function IndexScreen() {
         <View style={styles.brandBox}>
           <View style={styles.iconContainer}>
             <Image
-              source={require('../assets/logo-icon.png')}
+              source={require('../assets/adaptive-icon.png')}
               style={styles.logoIcon}
               resizeMode="contain"
             />
@@ -38,7 +38,7 @@ export default function IndexScreen() {
 
         <View style={styles.statusBox}>
           <ActivityIndicator size="small" color={Colors.light.primary} />
-          <Text style={styles.statusText}>Connecting to Dewasi Health Network...</Text>
+          <Text style={styles.statusText}>Connecting to Doctor Contact Network...</Text>
         </View>
       </View>
 

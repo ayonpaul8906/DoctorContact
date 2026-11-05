@@ -531,6 +531,7 @@ export function useMarkClinicNotificationRead() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'clinic'] });
     },
   });
 }
@@ -544,6 +545,7 @@ export function useMarkAllClinicNotificationsRead() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['notifications', 'clinic'] });
     },
   });
 }
